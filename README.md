@@ -10,8 +10,8 @@ Montgomery Grow is an economic intelligence dashboard for Montgomery, Alabama. I
 ### Running the Backend (FastAPI)
 
 ```bash
-cd "E:\Bhavya\Web Project\Montgomery Grow"
-.venv\Scripts\python -m uvicorn backend.app.main:app --reload --port 8000
+cd "E:\Bhavya\Web Project\Montgomery Grow\backend"
+..\.venv\Scripts\python -m uvicorn main:app --reload --port 8000
 ```
 
 Key API endpoints:
@@ -27,7 +27,7 @@ Key API endpoints:
 - `GET /api/visitors/top-locations` – most visited locations by category
 - `POST /api/advisor/query` – lightweight AI-style economic advisor answer
 
-All datasets are currently **synthetic but structured** to mimic real ArcGIS-style civic data. The `backend/app/data_loader.py` module is the main place to connect to real ArcGIS exports or databases.
+All datasets are currently **synthetic but structured** to mimic real ArcGIS-style civic data. The `backend/database.py` module is the main place to connect to real ArcGIS exports or databases.
 
 ### Running the Frontend (React dashboard)
 
@@ -37,5 +37,6 @@ npm run dev
 ```
 
 The Vite dev server defaults to `http://localhost:5173` and talks to the backend at `http://localhost:8000`.
+
 
 

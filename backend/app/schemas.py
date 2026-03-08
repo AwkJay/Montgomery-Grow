@@ -87,7 +87,7 @@ class TopLocationCategory(BaseModel):
 
 
 class AdvisorQueryRequest(BaseModel):
-    question: str
+    question: str = Field(..., alias="query", description="User question for the advisor.")
     lat: Optional[float] = None
     lon: Optional[float] = None
     address: Optional[str] = None
