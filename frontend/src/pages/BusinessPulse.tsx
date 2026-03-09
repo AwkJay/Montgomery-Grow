@@ -3,7 +3,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import BusinessHeatmap from '../components/BusinessHeatmap';
 import 'leaflet/dist/leaflet.css';
 
-const API_BASE = 'http://localhost:8000';
+const API_BASE = import.meta.env.VITE_API_URL
 
 type BusinessLicensesPerYear = {
   year: number;
