@@ -13,6 +13,7 @@
     "autoprefixer": "^10.4.27",
     "leaflet": "^1.9.4",
     "leaflet.heat": "^0.2.0",
+    "maplibre-gl": "^5.19.0",
     "postcss": "^8.5.8",
     "primeicons": "^7.0.0",
     "primereact": "^10.9.7",
