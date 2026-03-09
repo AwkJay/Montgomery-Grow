@@ -122,14 +122,6 @@ export default function Navbar({
               Business Pulse
             </NavLink>
             <NavLink
-              to="/development-map"
-              className={({ isActive }) =>
-                `${navLinkClasses} ${isActive ? 'bg-slate-800 text-emerald-400' : ''}`
-              }
-            >
-              Development Activity
-            </NavLink>
-            <NavLink
               to="/jobs"
               className={({ isActive }) =>
                 `${navLinkClasses} ${isActive ? 'bg-slate-800 text-emerald-400' : ''}`
