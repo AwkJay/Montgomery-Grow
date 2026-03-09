@@ -22,6 +22,7 @@ def create_tables():
             posted_date  TEXT,
             source       TEXT,
             link         TEXT,
+            skills       TEXT,
             scraped_at   TEXT
         );
 
@@ -34,7 +35,9 @@ def create_tables():
             date         TEXT,
             address      TEXT,
             zip          TEXT,
-            in_city      INTEGER
+            in_city      INTEGER,
+            lat          REAL,
+            lng          REAL
         );
 
         CREATE TABLE IF NOT EXISTS construction_permits (
@@ -79,6 +82,25 @@ def create_tables():
         );
     """)
     conn.commit()
+    # Backward-compatible schema upgrades
+    try:
+        conn.executescript("""
+            ALTER TABLE jobs ADD COLUMN skills TEXT;
+        """)
+        conn.commit()
+    except sqlite3.OperationalError:
+        # Column already exists.
+        pass
+    # Safely add lat/lng to existing databases that predate these columns.
+    try:
+        conn.executescript("""
+            ALTER TABLE business_licenses ADD COLUMN lat REAL;
+            ALTER TABLE business_licenses ADD COLUMN lng REAL;
+        """)
+        conn.commit()
+    except sqlite3.OperationalError:
+        # Columns already exist – ignore.
+        pass
     conn.close()
 
 # ── UPSERT FUNCTIONS ──────────────────────────────────────────
@@ -90,7 +112,7 @@ def upsert_jobs(jobs: list[dict]):
     conn.executemany("""
         INSERT OR REPLACE INTO jobs
         VALUES (:id,:title,:company,:sector,:salary_min,:salary_max,
-                :posted_date,:source,:link,:scraped_at)
+                :posted_date,:source,:link,:skills,:scraped_at)
     """, jobs)
     conn.commit()
     conn.close()
@@ -100,7 +122,7 @@ def upsert_business_licenses(records: list[dict]):
     conn = get_db()
     conn.executemany("""
         INSERT OR REPLACE INTO business_licenses
-        VALUES (:id,:name,:category,:type,:year,:date,:address,:zip,:in_city)
+        VALUES (:id,:name,:category,:type,:year,:date,:address,:zip,:in_city,:lat,:lng)
     """, records)
     conn.commit()
     conn.close()

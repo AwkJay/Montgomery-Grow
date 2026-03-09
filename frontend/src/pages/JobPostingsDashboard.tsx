@@ -6,10 +6,13 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
+  Brush,
   ResponsiveContainer,
   BarChart,
   Bar,
 } from 'recharts';
+import { DataTable } from 'primereact/datatable';
+import { Column } from 'primereact/column';
 
 const API_BASE = 'http://localhost:8000';
 
@@ -25,54 +28,82 @@ type JobTrendPoint = {
   postings: number;
 };
 
-type JobSkillDemand = {
-  skill: string;
-  count: number;
-};
-
 type JobListing = {
   job_title: string;
   company: string;
   industry: string;
   salary: string;
-  location: string;
   posting_date: string;
   skills: string[];
+};
+
+type JobsBySourceRow = {
+  source: string;
+  count: number;
+};
+
+type IndustryCountRow = {
+  sector: string;
+  count: number;
+};
+
+type JobSkillDemand = {
+  skill: string;
+  count: number;
 };
 
 export default function JobPostingsDashboard() {
   const [summary, setSummary] = useState<JobSummary | null>(null);
   const [trends, setTrends] = useState<JobTrendPoint[]>([]);
-  const [skills, setSkills] = useState<JobSkillDemand[]>([]);
+  const [industryCounts, setIndustryCounts] = useState<IndustryCountRow[]>([]);
   const [listings, setListings] = useState<JobListing[]>([]);
+  const [bySource, setBySource] = useState<JobsBySourceRow[]>([]);
+  const [skills, setSkills] = useState<JobSkillDemand[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // PrimeReact lazy table state
+  const [tableLoading, setTableLoading] = useState(false);
+  const [totalRecords, setTotalRecords] = useState(0);
+  const [first, setFirst] = useState(0);
+  const [rows, setRows] = useState(10);
+  const [sortField, setSortField] = useState<'company' | 'job_title' | 'industry' | 'salary' | 'posting_date'>('company');
+  const [sortOrder, setSortOrder] = useState<1 | -1>(1);
+
+  // Hiring trend range (year + month)
+  const [startYear, setStartYear] = useState<string>('');
+  const [startMonth, setStartMonth] = useState<string>('');
+  const [endYear, setEndYear] = useState<string>('');
+  const [endMonth, setEndMonth] = useState<string>('');
 
   useEffect(() => {
     async function fetchData() {
       setLoading(true);
       setError(null);
       try {
-        const [summaryRes, trendsRes, skillsRes, listingsRes] = await Promise.all([
+        const [summaryRes, trendsRes, sourcesRes, industryRes, skillsRes] = await Promise.all([
           fetch(`${API_BASE}/api/jobs/summary`),
           fetch(`${API_BASE}/api/jobs/trends`),
+          fetch(`${API_BASE}/api/jobs/sources`),
+          fetch(`${API_BASE}/api/jobs/industry-counts`),
           fetch(`${API_BASE}/api/jobs/skills`),
-          fetch(`${API_BASE}/api/jobs/listings`),
         ]);
 
-        if (!summaryRes.ok || !trendsRes.ok || !skillsRes.ok || !listingsRes.ok) {
+        if (!summaryRes.ok || !trendsRes.ok || !sourcesRes.ok || !industryRes.ok || !skillsRes.ok) {
           throw new Error('Failed to load job analytics');
         }
 
         const summaryJson = (await summaryRes.json()) as JobSummary;
         const trendsJson = (await trendsRes.json()) as JobTrendPoint[];
+        const sourcesJson = (await sourcesRes.json()) as JobsBySourceRow[];
+        const industryJson = (await industryRes.json()) as IndustryCountRow[];
         const skillsJson = (await skillsRes.json()) as JobSkillDemand[];
-        const listingsJson = (await listingsRes.json()) as JobListing[];
 
         setSummary(summaryJson);
         setTrends(trendsJson);
+        setBySource(sourcesJson);
+        setIndustryCounts(industryJson);
         setSkills(skillsJson);
-        setListings(listingsJson);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load job analytics');
       } finally {
@@ -82,6 +113,82 @@ export default function JobPostingsDashboard() {
 
     fetchData();
   }, []);
+
+  // Initialize trend range once trends load.
+  useEffect(() => {
+    if (trends.length === 0) return;
+    // trends.month is "YYYY-MM"
+    const firstMonth = trends[0]?.month ?? '';
+    const lastMonth = trends[trends.length - 1]?.month ?? '';
+    const [fy, fm] = firstMonth.split('-');
+    const [ly, lm] = lastMonth.split('-');
+
+    setStartYear((prev) => prev || fy || '');
+    setStartMonth((prev) => prev || fm || '');
+    setEndYear((prev) => prev || ly || '');
+    setEndMonth((prev) => prev || lm || '');
+  }, [trends]);
+
+  useEffect(() => {
+    async function fetchPage() {
+      setTableLoading(true);
+      try {
+        const url = new URL(`${API_BASE}/api/jobs/listings-page`);
+        url.searchParams.set('offset', String(first));
+        url.searchParams.set('limit', String(rows));
+        url.searchParams.set('sort_field', sortField);
+        url.searchParams.set('sort_order', String(sortOrder));
+
+        const res = await fetch(url.toString());
+        if (!res.ok) throw new Error('Failed to load job listings');
+        const json = (await res.json()) as { data: JobListing[]; total: number };
+        setListings(json.data);
+        setTotalRecords(json.total);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load job listings');
+      } finally {
+        setTableLoading(false);
+      }
+    }
+
+    if (!loading) {
+      fetchPage();
+    }
+  }, [first, rows, sortField, sortOrder, loading]);
+
+  const months = [
+    { value: '01', label: 'Jan' },
+    { value: '02', label: 'Feb' },
+    { value: '03', label: 'Mar' },
+    { value: '04', label: 'Apr' },
+    { value: '05', label: 'May' },
+    { value: '06', label: 'Jun' },
+    { value: '07', label: 'Jul' },
+    { value: '08', label: 'Aug' },
+    { value: '09', label: 'Sep' },
+    { value: '10', label: 'Oct' },
+    { value: '11', label: 'Nov' },
+    { value: '12', label: 'Dec' },
+  ];
+
+  const availableYears = Array.from(
+    new Set(
+      trends
+        .map((t) => (t.month || '').split('-')[0])
+        .filter((y) => y && y.length === 4),
+    ),
+  ).sort();
+
+  const startKey = startYear && startMonth ? `${startYear}-${startMonth}` : '';
+  const endKey = endYear && endMonth ? `${endYear}-${endMonth}` : '';
+
+  const normalizedStartKey = startKey && endKey && startKey > endKey ? endKey : startKey;
+  const normalizedEndKey = startKey && endKey && startKey > endKey ? startKey : endKey;
+
+  const filteredTrends =
+    normalizedStartKey && normalizedEndKey
+      ? trends.filter((t) => t.month >= normalizedStartKey && t.month <= normalizedEndKey)
+      : trends;
 
   if (loading) {
     return (
@@ -137,10 +244,63 @@ export default function JobPostingsDashboard() {
                 Job postings over time, capturing demand momentum in the local market.
               </p>
             </div>
+            <div className="flex items-center gap-2 text-[11px] text-slate-300">
+              <div className="flex items-center gap-1">
+                <span className="text-slate-500">Start</span>
+                <select
+                  className="rounded-lg border border-slate-700 bg-slate-900/70 px-2 py-1 text-[11px] text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500/70"
+                  value={startYear}
+                  onChange={(e) => setStartYear(e.target.value)}
+                >
+                  {availableYears.map((y) => (
+                    <option key={y} value={y}>
+                      {y}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className="rounded-lg border border-slate-700 bg-slate-900/70 px-2 py-1 text-[11px] text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500/70"
+                  value={startMonth}
+                  onChange={(e) => setStartMonth(e.target.value)}
+                >
+                  {months.map((m) => (
+                    <option key={m.value} value={m.value}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center gap-1">
+                <span className="text-slate-500">End</span>
+                <select
+                  className="rounded-lg border border-slate-700 bg-slate-900/70 px-2 py-1 text-[11px] text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500/70"
+                  value={endYear}
+                  onChange={(e) => setEndYear(e.target.value)}
+                >
+                  {availableYears.map((y) => (
+                    <option key={y} value={y}>
+                      {y}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className="rounded-lg border border-slate-700 bg-slate-900/70 px-2 py-1 text-[11px] text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500/70"
+                  value={endMonth}
+                  onChange={(e) => setEndMonth(e.target.value)}
+                >
+                  {months.map((m) => (
+                    <option key={m.value} value={m.value}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
           </div>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={trends}>
+              <LineChart data={filteredTrends}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                 <XAxis dataKey="month" stroke="#94a3b8" fontSize={12} />
                 <YAxis stroke="#94a3b8" fontSize={12} />
@@ -160,18 +320,68 @@ export default function JobPostingsDashboard() {
                   dot={{ r: 3 }}
                   activeDot={{ r: 5 }}
                 />
+                <Brush
+                  dataKey="month"
+                  height={24}
+                  stroke="#22c55e"
+                  travellerWidth={10}
+                  fill="#020617"
+                  startIndex={Math.max(0, filteredTrends.length - 12)}
+                />
               </LineChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        {/* Most In-Demand Skills */}
+        {/* Source coverage */}
         <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 shadow-xl shadow-black/60">
           <div className="flex items-center justify-between mb-3">
             <div>
+              <h2 className="text-sm font-semibold text-slate-100">Ingestion Coverage</h2>
+              <p className="text-xs text-slate-400">
+                Jobs currently stored, broken down by source.
+              </p>
+            </div>
+          </div>
+          <div className="space-y-2">
+            {bySource.length === 0 ? (
+              <div className="text-xs text-slate-400">No source data available.</div>
+            ) : (
+              bySource.map((row) => (
+                <div
+                  key={row.source}
+                  className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2"
+                >
+                  <div className="text-xs text-slate-200">{row.source}</div>
+                  <div className="text-xs font-semibold text-emerald-300">{row.count.toLocaleString()}</div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Top Industries & Insights */}
+      <div className="grid gap-6 lg:grid-cols-3 items-start">
+        <div className="lg:col-span-2 rounded-2xl border border-slate-800 bg-slate-900/60 p-4 shadow-xl shadow-black/60">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-100">Top Industries Hiring</h2>
+              <p className="text-xs text-slate-400">
+                Relative demand by industry based on current ingested postings.
+              </p>
+            </div>
+          </div>
+          <IndustryChart industryCounts={industryCounts} />
+        </div>
+
+        {/* Most In-Demand Skills */}
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 shadow-xl shadow-black/60 space-y-3">
+          <div className="flex items-center justify-between mb-2">
+            <div>
               <h2 className="text-sm font-semibold text-slate-100">Most In-Demand Skills</h2>
               <p className="text-xs text-slate-400">
-                Skills requested most frequently across recent postings.
+                Skills appearing most frequently in current job postings.
               </p>
             </div>
           </div>
@@ -194,47 +404,12 @@ export default function JobPostingsDashboard() {
                     borderRadius: 8,
                     color: '#e2e8f0',
                   }}
+                  cursor={false}
                 />
                 <Bar dataKey="count" fill="#22c55e" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
-        </div>
-      </div>
-
-      {/* Top Industries & Insights */}
-      <div className="grid gap-6 lg:grid-cols-3 items-start">
-        <div className="lg:col-span-2 rounded-2xl border border-slate-800 bg-slate-900/60 p-4 shadow-xl shadow-black/60">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h2 className="text-sm font-semibold text-slate-100">Top Industries Hiring</h2>
-              <p className="text-xs text-slate-400">
-                Relative demand by industry based on the current job listings.
-              </p>
-            </div>
-          </div>
-          <IndustryChart listings={listings} />
-        </div>
-
-        {/* Workforce Insights Panel */}
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 shadow-xl shadow-black/60 space-y-3">
-          <h2 className="text-sm font-semibold text-slate-100 mb-1">Workforce Insights</h2>
-          <p className="text-xs text-slate-400 mb-1">
-            Static sample insights that mimic what an AI analysis layer would surface from live job
-            data.
-          </p>
-          <InsightCard
-            title="Healthcare demand is accelerating"
-            body="Healthcare hiring increased roughly 22% this quarter, led by nursing and clinical support roles concentrated around the downtown medical district."
-          />
-          <InsightCard
-            title="Python at the center of tech roles"
-            body="Python appears in the majority of recent technology postings, especially in data, analytics, and full‑stack engineering roles integrating with cloud services."
-          />
-          <InsightCard
-            title="Excel still matters for operations"
-            body="Excel remains a baseline expectation for supervisors and managers in retail, manufacturing, and back‑office functions across the city."
-          />
         </div>
       </div>
 
@@ -244,58 +419,70 @@ export default function JobPostingsDashboard() {
           <div>
             <h2 className="text-sm font-semibold text-slate-100">Job Listings</h2>
             <p className="text-xs text-slate-400">
-              Mock job postings representing current hiring demand across Montgomery.
+              Sources: {bySource.map((s) => s.source).join(', ') || '—'}
             </p>
           </div>
-          {summary && (
-            <div className="text-[11px] text-slate-500">
-              Showing {listings.length} of {summary.total_jobs} postings
+          <div className="flex items-center gap-3">
+            <div className="text-[11px] text-slate-500 whitespace-nowrap">
+              Showing {Math.min(first + 1, totalRecords)}–{Math.min(first + rows, totalRecords)} of{' '}
+              {totalRecords.toLocaleString()} postings
             </div>
-          )}
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-slate-500 whitespace-nowrap">Top</span>
+              <select
+                className="rounded-lg border border-slate-700 bg-slate-900/70 px-2 py-1 text-[11px] text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500/70"
+                value={rows}
+                onChange={(e) => {
+                  setFirst(0);
+                  setRows(parseInt(e.target.value, 10));
+                }}
+              >
+                {[10, 25, 50, 100].map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
         </div>
-        <div className="overflow-x-auto rounded-xl border border-slate-800/80">
-          <table className="min-w-full text-left text-xs">
-            <thead className="bg-slate-900/80 text-slate-400">
-              <tr>
-                <th className="px-3 py-2 font-medium">Job Title</th>
-                <th className="px-3 py-2 font-medium">Company</th>
-                <th className="px-3 py-2 font-medium">Industry</th>
-                <th className="px-3 py-2 font-medium">Salary</th>
-                <th className="px-3 py-2 font-medium">Location</th>
-                <th className="px-3 py-2 font-medium">Posting Date</th>
-                <th className="px-3 py-2 font-medium">Key Skills</th>
-              </tr>
-            </thead>
-            <tbody>
-              {listings.map((job, idx) => (
-                <tr
-                  key={`${job.company}-${job.job_title}-${idx}`}
-                  className="border-t border-slate-800/80 hover:bg-slate-900/80"
-                >
-                  <td className="px-3 py-2 text-slate-100">{job.job_title}</td>
-                  <td className="px-3 py-2 text-slate-200">{job.company}</td>
-                  <td className="px-3 py-2 text-slate-300">{job.industry}</td>
-                  <td className="px-3 py-2 text-emerald-300">{job.salary}</td>
-                  <td className="px-3 py-2 text-slate-300">{job.location}</td>
-                  <td className="px-3 py-2 text-slate-400">
-                    {new Date(job.posting_date).toLocaleDateString()}
-                  </td>
-                  <td className="px-3 py-2 text-slate-200">
-                    <div className="flex flex-wrap gap-1">
-                      {job.skills.map((skill) => (
-                        <span
-                          key={skill}
-                          className="rounded-full bg-slate-800/80 border border-slate-700 px-2 py-0.5 text-[11px]"
-                        >
-                          {skill}
-                        </span>
-                      ))}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="rounded-xl border border-slate-800/80 overflow-hidden">
+          <DataTable
+            value={listings}
+            lazy
+            loading={tableLoading}
+            totalRecords={totalRecords}
+            first={first}
+            rows={rows}
+            onPage={(e) => {
+              setFirst(e.first ?? 0);
+              setRows(e.rows ?? rows);
+            }}
+            sortField={sortField}
+            sortOrder={sortOrder}
+            onSort={(e) => {
+              setFirst(0);
+              setSortField((e.sortField as typeof sortField) ?? 'company');
+              setSortOrder((e.sortOrder as 1 | -1) ?? 1);
+            }}
+            paginator
+            paginatorTemplate="PrevPageLink PageLinks NextPageLink"
+            stripedRows
+            size="normal"
+            className="montgomery-table"
+          >
+            <Column
+              header="S. No."
+              body={(_, options) => <span className="text-slate-300">{first + (options.rowIndex ?? 0) + 1}</span>}
+              style={{ width: '90px' }}
+              headerStyle={{ width: '90px' }}
+            />
+            <Column field="job_title" header="Job Title" sortable style={{ minWidth: '260px' }} />
+            <Column field="company" header="Company" sortable style={{ minWidth: '220px' }} />
+            <Column field="industry" header="Industry" sortable style={{ minWidth: '180px' }} />
+            <Column field="salary" header="Salary" sortable style={{ minWidth: '180px' }} />
+            <Column field="posting_date" header="Posting Date" sortable style={{ minWidth: '160px' }} />
+          </DataTable>
         </div>
       </div>
     </div>
@@ -321,16 +508,12 @@ function OverviewCard({ label, value, description }: OverviewCardProps) {
 }
 
 type IndustryChartProps = {
-  listings: JobListing[];
+  industryCounts: IndustryCountRow[];
 };
 
-function IndustryChart({ listings }: IndustryChartProps) {
-  const counts: Record<string, number> = {};
-  for (const job of listings) {
-    counts[job.industry] = (counts[job.industry] || 0) + 1;
-  }
-  const data = Object.entries(counts)
-    .map(([industry, count]) => ({ industry, count }))
+function IndustryChart({ industryCounts }: IndustryChartProps) {
+  const data = [...industryCounts]
+    .map((r) => ({ industry: r.sector || 'Other', count: r.count }))
     .sort((a, b) => b.count - a.count);
 
   return (

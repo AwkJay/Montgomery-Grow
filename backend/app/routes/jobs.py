@@ -64,12 +64,29 @@ def job_trends() -> List[JobTrendPoint]:
 
 @router.get("/jobs/skills", response_model=List[JobSkillDemand])
 def job_skills() -> List[JobSkillDemand]:
-    """
-    Placeholder: the current jobs schema does not store explicit skills,
-    so this returns an empty list until skills are modeled in the database.
-    """
+    """Aggregate most in-demand skills from normalized jobs table."""
 
-    return []
+    conn = get_db()
+    rows = conn.execute(
+        """
+        SELECT skills
+        FROM jobs
+        WHERE skills IS NOT NULL AND skills != ''
+        """
+    ).fetchall()
+    conn.close()
+
+    counts: dict[str, int] = {}
+    for r in rows:
+        raw = r["skills"] or ""
+        for skill in raw.split(","):
+            s = skill.strip()
+            if not s:
+                continue
+            counts[s] = counts.get(s, 0) + 1
+
+    top = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)[:20]
+    return [JobSkillDemand(skill=name, count=count) for name, count in top]
 
 
 @router.get("/jobs/listings", response_model=List[JobListing])
@@ -94,6 +111,9 @@ def job_listings(limit: int = 100) -> List[JobListing]:
         else:
             salary = "N/A"
 
+        raw_skills = (r.get("skills") or "").split(",") if r.get("skills") else []
+        skills = [s.strip() for s in raw_skills if s.strip()]
+
         listings.append(
             JobListing(
                 job_title=(r.get("title") or "").strip(),
@@ -102,7 +122,7 @@ def job_listings(limit: int = 100) -> List[JobListing]:
                 salary=salary,
                 location="Montgomery, AL",
                 posting_date=str(r.get("posted_date") or ""),
-                skills=[],
+                skills=skills,
             )
         )
 

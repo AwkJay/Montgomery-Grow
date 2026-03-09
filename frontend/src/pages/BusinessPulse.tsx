@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
-import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet';
+import BusinessHeatmap from '../components/BusinessHeatmap';
 import 'leaflet/dist/leaflet.css';
 
 const API_BASE = 'http://localhost:8000';
@@ -15,12 +15,6 @@ type CategoryCount = {
   count: number;
 };
 
-type HeatmapPoint = {
-  lat: number;
-  lon: number;
-  weight: number;
-};
-
 type LicenseStatus = string;
 
 const COLORS = ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#ec4899', '#06b6d4', '#84cc16'];
@@ -28,7 +22,6 @@ const COLORS = ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#ec4899'
 export default function BusinessPulse() {
   const [licensesPerYear, setLicensesPerYear] = useState<BusinessLicensesPerYear[]>([]);
   const [categoryDistribution, setCategoryDistribution] = useState<CategoryCount[]>([]);
-  const [heatmapPoints, setHeatmapPoints] = useState<HeatmapPoint[]>([]);
   const [statuses, setStatuses] = useState<LicenseStatus[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('All categories');
   const [selectedStatus, setSelectedStatus] = useState<string>('All statuses');
@@ -40,25 +33,22 @@ export default function BusinessPulse() {
       setLoading(true);
       setError(null);
       try {
-        const [yearRes, catRes, heatRes, statusRes] = await Promise.all([
+        const [yearRes, catRes, statusRes] = await Promise.all([
           fetch(`${API_BASE}/api/business/licenses-per-year`),
           fetch(`${API_BASE}/api/business/category-distribution`),
-          fetch(`${API_BASE}/api/business/density-heatmap`),
           fetch(`${API_BASE}/api/business/license-statuses`),
         ]);
 
-        if (!yearRes.ok || !catRes.ok || !heatRes.ok || !statusRes.ok) {
+        if (!yearRes.ok || !catRes.ok || !statusRes.ok) {
           throw new Error('Failed to fetch business data');
         }
 
         const yearData = (await yearRes.json()) as BusinessLicensesPerYear[];
         const catData = (await catRes.json()) as CategoryCount[];
-        const heatData = (await heatRes.json()) as HeatmapPoint[];
         const statusData = (await statusRes.json()) as LicenseStatus[];
 
         setLicensesPerYear(yearData);
         setCategoryDistribution(catData);
-        setHeatmapPoints(heatData);
         setStatuses(statusData);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load data');
@@ -73,6 +63,7 @@ export default function BusinessPulse() {
   useEffect(() => {
     async function refetchFiltered() {
       try {
+        setError(null);
         const params = new URLSearchParams();
         if (selectedCategory !== 'All categories') {
           params.set('category', selectedCategory);
@@ -123,14 +114,13 @@ export default function BusinessPulse() {
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* New Business Licenses Per Year */}
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 shadow-xl shadow-black/50">
+      {/* New Business Licenses Per Year */}
+      <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 shadow-xl shadow-black/50">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-slate-100">New Business Licenses Per Year</h2>
             <div className="flex gap-2 items-center">
               <select
-                className="bg-slate-900/80 border border-slate-700 text-xs text-slate-200 rounded-md px-2 py-1"
+                className="bg-slate-900/80 border border-slate-700 text-xs text-slate-200 rounded-md px-2 py-1 max-w-44"
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
               >
@@ -142,7 +132,7 @@ export default function BusinessPulse() {
                 ))}
               </select>
               <select
-                className="bg-slate-900/80 border border-slate-700 text-xs text-slate-200 rounded-md px-2 py-1"
+                className="bg-slate-900/80 border border-slate-700 text-xs text-slate-200 rounded-md px-2 py-1 max-w-32"
                 value={selectedStatus}
                 onChange={(e) => setSelectedStatus(e.target.value)}
               >
@@ -167,89 +157,60 @@ export default function BusinessPulse() {
                   borderRadius: '8px',
                   color: '#e2e8f0',
                 }}
+                cursor={false}
               />
               <Bar dataKey="count" fill="#10b981" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
-        </div>
+      </div>
 
-        {/* Category Distribution */}
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 shadow-xl shadow-black/50">
-          <h2 className="text-sm font-semibold text-slate-100 mb-4">Business Category Distribution</h2>
-          <ResponsiveContainer width="100%" height={300}>
-            <PieChart>
-              <Pie
-                data={categoryDistribution.slice(0, 8)}
-                cx="50%"
-                cy="50%"
-                labelLine={false}
-                label={({ category, percent }) => `${category}: ${(percent * 100).toFixed(0)}%`}
-                outerRadius={80}
-                fill="#8884d8"
-                dataKey="count"
-              >
-                {categoryDistribution.slice(0, 8).map((_, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                ))}
-              </Pie>
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: '#1e293b',
-                  border: '1px solid #334155',
-                  borderRadius: '8px',
-                  color: '#e2e8f0',
-                }}
-              />
-              <Legend />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
+      {/* Category Distribution */}
+      <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 shadow-xl shadow-black/50">
+        <h2 className="text-sm font-semibold text-slate-100 mb-4">Business Category Distribution</h2>
+        <ResponsiveContainer width="100%" height={320}>
+          <PieChart>
+            <Pie
+              data={categoryDistribution.slice(0, 8)}
+              cx="50%"
+              cy="50%"
+              labelLine={false}
+              outerRadius={80}
+              fill="#8884d8"
+              dataKey="count"
+              nameKey="category"
+            >
+              {categoryDistribution.slice(0, 8).map((_, index) => (
+                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+              ))}
+            </Pie>
+            <Tooltip
+              contentStyle={{
+                backgroundColor: '#1e293b',
+                border: '1px solid #334155',
+                borderRadius: '8px',
+                color: '#e2e8f0',
+              }}
+              formatter={(value: number | string) => {
+                const numeric = typeof value === 'number' ? value : Number(value ?? 0);
+                const countText = numeric.toLocaleString();
+                return [countText, ''];
+              }}
+            />
+            <Legend />
+          </PieChart>
+        </ResponsiveContainer>
       </div>
 
       {/* Business Density Heatmap */}
       <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 shadow-xl shadow-black/50">
         <h2 className="text-sm font-semibold text-slate-100 mb-2">Active Business Density Heatmap</h2>
         <p className="text-xs text-slate-400 mb-4">
-          Each marker represents an active business location in Montgomery. Clusters indicate commercial corridors.
+          Hotter colors indicate more overlapping business licenses. Use the controls above the map to filter and
+          search.
         </p>
-        <div className="h-[500px] rounded-lg overflow-hidden border border-slate-700">
-          <MapContainer
-            center={[32.3668, -86.3000]}
-            zoom={12}
-            style={{ height: '100%', width: '100%' }}
-            className="z-0"
-          >
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-            {heatmapPoints.map((point, idx) => (
-              <CircleMarker
-                key={idx}
-                center={[point.lat, point.lon]}
-                radius={4}
-                pathOptions={{
-                  fillColor: '#10b981',
-                  fillOpacity: 0.6,
-                  color: '#10b981',
-                  weight: 1,
-                }}
-              >
-                <Popup>
-                  <div className="text-xs">
-                    <div className="font-semibold">Business Location</div>
-                    <div className="text-slate-600">
-                      {point.lat.toFixed(4)}, {point.lon.toFixed(4)}
-                    </div>
-                  </div>
-                </Popup>
-              </CircleMarker>
-            ))}
-          </MapContainer>
-        </div>
+        <BusinessHeatmap />
       </div>
     </div>
   );
 }
-
 

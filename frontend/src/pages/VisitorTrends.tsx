@@ -147,6 +147,7 @@ export default function VisitorTrends() {
                   borderRadius: '8px',
                   color: '#e2e8f0',
                 }}
+                cursor={false}
               />
               <Bar dataKey="visitors" fill="#3b82f6" radius={[0, 4, 4, 0]} />
             </BarChart>
@@ -168,6 +169,7 @@ export default function VisitorTrends() {
                   borderRadius: '8px',
                   color: '#e2e8f0',
                 }}
+                cursor={false}
               />
               <Bar dataKey="visits" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
             </BarChart>
