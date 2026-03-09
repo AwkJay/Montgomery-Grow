@@ -123,7 +123,7 @@ class JobListing(BaseModel):
     industry: str
     salary: str
     location: str
-    posting_date: date
+    posting_date: str
     skills: List[str]
 
 

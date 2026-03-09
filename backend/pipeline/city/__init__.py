@@ -1,3 +1,10 @@
-from .scoring_engine import compute_metrics, compute_score_and_grade, build_summary
+"""
+City-level data fetchers and related pipeline utilities.
 
-__all__ = ["compute_metrics", "compute_score_and_grade", "build_summary"]
+Current modules:
+- fetcher_gis: business license data from the city's GIS endpoint.
+- fetcher_census: census / demographic data (stub).
+- fetcher_311: 311 service request data (stub).
+"""
+
+__all__: list[str] = []

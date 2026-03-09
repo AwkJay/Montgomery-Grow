@@ -1,6 +1,6 @@
-from .scraper_indeed import run_indeed
-from .scraper_usajobs import run_usajobs
-from .scraper_jobaps import run_jobaps
-from .normalizer import normalize_listing
+from .scraper_indeed import fetch_indeed_csv
+from .scraper_usajobs import fetch_usajobs
+from .scraper_jobaps import fetch_jobaps
+from .normalizer import normalize_job
 
-__all__ = ["run_indeed", "run_usajobs", "run_jobaps", "normalize_listing"]
+__all__ = ["fetch_indeed_csv", "fetch_usajobs", "fetch_jobaps", "normalize_job"]

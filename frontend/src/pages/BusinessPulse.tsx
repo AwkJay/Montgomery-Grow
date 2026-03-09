@@ -21,12 +21,17 @@ type HeatmapPoint = {
   weight: number;
 };
 
+type LicenseStatus = string;
+
 const COLORS = ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#ec4899', '#06b6d4', '#84cc16'];
 
 export default function BusinessPulse() {
   const [licensesPerYear, setLicensesPerYear] = useState<BusinessLicensesPerYear[]>([]);
   const [categoryDistribution, setCategoryDistribution] = useState<CategoryCount[]>([]);
   const [heatmapPoints, setHeatmapPoints] = useState<HeatmapPoint[]>([]);
+  const [statuses, setStatuses] = useState<LicenseStatus[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>('All categories');
+  const [selectedStatus, setSelectedStatus] = useState<string>('All statuses');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,23 +40,26 @@ export default function BusinessPulse() {
       setLoading(true);
       setError(null);
       try {
-        const [yearRes, catRes, heatRes] = await Promise.all([
+        const [yearRes, catRes, heatRes, statusRes] = await Promise.all([
           fetch(`${API_BASE}/api/business/licenses-per-year`),
           fetch(`${API_BASE}/api/business/category-distribution`),
           fetch(`${API_BASE}/api/business/density-heatmap`),
+          fetch(`${API_BASE}/api/business/license-statuses`),
         ]);
 
-        if (!yearRes.ok || !catRes.ok || !heatRes.ok) {
+        if (!yearRes.ok || !catRes.ok || !heatRes.ok || !statusRes.ok) {
           throw new Error('Failed to fetch business data');
         }
 
         const yearData = (await yearRes.json()) as BusinessLicensesPerYear[];
         const catData = (await catRes.json()) as CategoryCount[];
         const heatData = (await heatRes.json()) as HeatmapPoint[];
+        const statusData = (await statusRes.json()) as LicenseStatus[];
 
         setLicensesPerYear(yearData);
         setCategoryDistribution(catData);
         setHeatmapPoints(heatData);
+        setStatuses(statusData);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load data');
       } finally {
@@ -61,6 +69,41 @@ export default function BusinessPulse() {
 
     fetchData();
   }, []);
+
+  useEffect(() => {
+    async function refetchFiltered() {
+      try {
+        const params = new URLSearchParams();
+        if (selectedCategory !== 'All categories') {
+          params.set('category', selectedCategory);
+        }
+        if (selectedStatus !== 'All statuses') {
+          params.set('status', selectedStatus);
+        }
+
+        const url =
+          params.toString().length > 0
+            ? `${API_BASE}/api/business/licenses-per-year-filtered?${params.toString()}`
+            : `${API_BASE}/api/business/licenses-per-year`;
+
+        const res = await fetch(url);
+        if (!res.ok) {
+          throw new Error('Failed to fetch filtered licenses data');
+        }
+        const data = (await res.json()) as BusinessLicensesPerYear[];
+        setLicensesPerYear(data);
+      } catch (err) {
+        // Keep previous data on filter error but surface message.
+        console.error(err);
+        setError(err instanceof Error ? err.message : 'Failed to load filtered licenses data');
+      }
+    }
+
+    // Only attempt refetch once initial load has completed.
+    if (!loading) {
+      refetchFiltered();
+    }
+  }, [selectedCategory, selectedStatus, loading]);
 
   if (loading) {
     return (
@@ -83,7 +126,35 @@ export default function BusinessPulse() {
       <div className="grid gap-6 lg:grid-cols-2">
         {/* New Business Licenses Per Year */}
         <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 shadow-xl shadow-black/50">
-          <h2 className="text-sm font-semibold text-slate-100 mb-4">New Business Licenses Per Year</h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-slate-100">New Business Licenses Per Year</h2>
+            <div className="flex gap-2 items-center">
+              <select
+                className="bg-slate-900/80 border border-slate-700 text-xs text-slate-200 rounded-md px-2 py-1"
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value)}
+              >
+                <option>All categories</option>
+                {categoryDistribution.map((c) => (
+                  <option key={c.category} value={c.category}>
+                    {c.category}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="bg-slate-900/80 border border-slate-700 text-xs text-slate-200 rounded-md px-2 py-1"
+                value={selectedStatus}
+                onChange={(e) => setSelectedStatus(e.target.value)}
+              >
+                <option>All statuses</option>
+                {statuses.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={licensesPerYear}>
               <CartesianGrid strokeDasharray="3 3" stroke="#334155" />

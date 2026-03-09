@@ -1,40 +1,121 @@
 from __future__ import annotations
 
-from typing import List
+from typing import List, Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from app.schemas import BusinessLicensesPerYear, CategoryCount, HeatmapPoint
-from database import get_data_store
+from database import get_business_growth, get_db
 
-router = APIRouter(prefix="/api/business", tags=["business"])
+router = APIRouter()
 
 
-@router.get("/licenses-per-year", response_model=List[BusinessLicensesPerYear])
+@router.get("/business/licenses-per-year", response_model=List[BusinessLicensesPerYear])
 def business_licenses_per_year() -> List[BusinessLicensesPerYear]:
-    store = get_data_store()
-    df = store.business_licenses.copy()
-    df["year"] = df["opened_date"].apply(lambda d: d.year)
-    grouped = df.groupby("year")["id"].count().reset_index(name="count")
-    return [BusinessLicensesPerYear(year=int(row["year"]), count=int(row["count"])) for _, row in grouped.iterrows()]
+    rows = get_business_growth()
+    by_year: dict[int, int] = {}
+    for row in rows:
+        year = int(row["year"])
+        by_year[year] = by_year.get(year, 0) + int(row["count"])
+    return [
+        BusinessLicensesPerYear(year=year, count=count)
+        for year, count in sorted(by_year.items())
+    ]
 
 
-@router.get("/category-distribution", response_model=List[CategoryCount])
+@router.get("/business/category-distribution", response_model=List[CategoryCount])
 def business_category_distribution() -> List[CategoryCount]:
-    store = get_data_store()
-    df = store.business_licenses.copy()
-    grouped = df.groupby("category")["id"].count().reset_index(name="count")
+    rows = get_business_growth()
+    by_category: dict[str, int] = {}
+    for row in rows:
+        category = str(row["category"]) if row["category"] is not None else "Unknown"
+        by_category[category] = by_category.get(category, 0) + int(row["count"])
     return [
-        CategoryCount(category=str(row["category"]), count=int(row["count"]))
-        for _, row in grouped.sort_values("count", ascending=False).iterrows()
+        CategoryCount(category=category, count=count)
+        for category, count in sorted(by_category.items(), key=lambda item: item[1], reverse=True)
     ]
 
 
-@router.get("/density-heatmap", response_model=List[HeatmapPoint])
+@router.get("/business/density-heatmap", response_model=List[HeatmapPoint])
 def business_density_heatmap() -> List[HeatmapPoint]:
-    store = get_data_store()
-    df = store.business_licenses[store.business_licenses["active"]].copy()
+    # Placeholder: database schema currently has no lat/lon for business_licenses.
+    # Returning an empty list keeps the API consistent without synthetic coordinates.
+    return []
+
+
+@router.get(
+    "/business/licenses-per-year-filtered",
+    response_model=List[BusinessLicensesPerYear],
+    summary="Business licenses per year with optional filters",
+)
+def business_licenses_per_year_filtered(
+    council_district: Optional[str] = Query(
+        default=None,
+        description="Council district identifier (column not yet populated; reserved for future use).",
+    ),
+    category: Optional[str] = Query(
+        default=None,
+        description="Business category to filter on (e.g. 'Restaurant').",
+    ),
+    status: Optional[str] = Query(
+        default=None,
+        description="License status / type (e.g. 'New', 'Renew').",
+    ),
+) -> List[BusinessLicensesPerYear]:
+    """
+    Return counts of business licenses per year, optionally filtered by category and status.
+
+    Note: council_district is reserved for when that column is available in the database.
+    """
+
+    conn = get_db()
+
+    sql = """
+        SELECT year, COUNT(*) AS count
+        FROM business_licenses
+        WHERE in_city = 1
+    """
+    params: list[object] = []
+
+    if category:
+        sql += " AND category = ?"
+        params.append(category)
+
+    if status:
+        # status is stored in the 'type' column (e.g. 'New', 'Renew').
+        sql += " AND type = ?"
+        params.append(status)
+
+    # council_district filter will be added once that column exists.
+
+    sql += " GROUP BY year ORDER BY year"
+
+    rows = conn.execute(sql, params).fetchall()
+    conn.close()
+
     return [
-        HeatmapPoint(lat=float(row["lat"]), lon=float(row["lon"]), weight=1.0)
-        for _, row in df.iterrows()
+        BusinessLicensesPerYear(year=int(row["year"]), count=int(row["count"]))
+        for row in rows
     ]
+
+
+@router.get(
+    "/business/license-statuses",
+    response_model=List[str],
+    summary="Distinct license status / type values available for filtering",
+)
+def business_license_statuses() -> List[str]:
+    """Return all distinct license 'type' values (e.g. New, Renew) for UI filters."""
+
+    conn = get_db()
+    rows = conn.execute(
+        """
+        SELECT DISTINCT type
+        FROM business_licenses
+        WHERE type IS NOT NULL AND type != ''
+        ORDER BY type
+        """
+    ).fetchall()
+    conn.close()
+
+    return [str(row["type"]) for row in rows]

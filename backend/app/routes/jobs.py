@@ -1,146 +1,162 @@
 from __future__ import annotations
 
-from datetime import date
 from typing import List
 
 from fastapi import APIRouter
 
 from app.schemas import JobListing, JobSkillDemand, JobSummary, JobTrendPoint
+from database import get_all_jobs, get_db, get_job_stats, get_jobs_by_sector
 
-router = APIRouter(prefix="/api/jobs", tags=["jobs"])
-
-
-# --- Mock job market data (placeholder for future pipeline) ---
-
-MOCK_JOB_LISTINGS: list[JobListing] = [
-    JobListing(
-        job_title="Senior Data Analyst",
-        company="Montgomery Health Systems",
-        industry="Healthcare",
-        salary="$95,000 - $115,000",
-        location="Downtown Montgomery",
-        posting_date=date(2026, 3, 1),
-        skills=["SQL", "Python", "Excel", "Healthcare Analytics"],
-    ),
-    JobListing(
-        job_title="Cloud DevOps Engineer",
-        company="Riverfront Tech Labs",
-        industry="Technology",
-        salary="$110,000 - $135,000",
-        location="Riverfront District",
-        posting_date=date(2026, 2, 25),
-        skills=["AWS", "CI/CD", "Terraform", "Linux"],
-    ),
-    JobListing(
-        job_title="Retail Store Manager",
-        company="Capitol Square Retail Group",
-        industry="Retail",
-        salary="$55,000 - $70,000",
-        location="East Montgomery",
-        posting_date=date(2026, 2, 20),
-        skills=["Customer Service", "Inventory Management", "Excel"],
-    ),
-    JobListing(
-        job_title="Construction Project Manager",
-        company="Montgomery BuildCo",
-        industry="Construction",
-        salary="$95,000 - $125,000",
-        location="West Montgomery",
-        posting_date=date(2026, 3, 3),
-        skills=["Project Management", "Scheduling", "OSHA Compliance"],
-    ),
-    JobListing(
-        job_title="Full-Stack Software Engineer",
-        company="Capital City Innovations",
-        industry="Technology",
-        salary="$105,000 - $130,000",
-        location="Midtown Montgomery",
-        posting_date=date(2026, 1, 30),
-        skills=["Python", "React", "SQL", "AWS"],
-    ),
-    JobListing(
-        job_title="Registered Nurse (ER)",
-        company="Baptist Medical Center",
-        industry="Healthcare",
-        salary="$78,000 - $96,000",
-        location="Central Montgomery",
-        posting_date=date(2026, 3, 4),
-        skills=["Patient Care", "Electronic Health Records", "Teamwork"],
-    ),
-    JobListing(
-        job_title="Manufacturing Line Supervisor",
-        company="Montgomery Industrial Partners",
-        industry="Manufacturing",
-        salary="$62,000 - $78,000",
-        location="Industrial Park",
-        posting_date=date(2026, 2, 10),
-        skills=["Lean Manufacturing", "Safety Management", "Excel"],
-    ),
-    JobListing(
-        job_title="Business Analyst",
-        company="Montgomery City Ventures",
-        industry="Professional Services",
-        salary="$80,000 - $95,000",
-        location="Downtown Montgomery",
-        posting_date=date(2026, 1, 18),
-        skills=["SQL", "Power BI", "Project Management"],
-    ),
-]
-
-MOCK_JOB_TRENDS: list[JobTrendPoint] = [
-    JobTrendPoint(month="Jan", postings=120),
-    JobTrendPoint(month="Feb", postings=150),
-    JobTrendPoint(month="Mar", postings=210),
-    JobTrendPoint(month="Apr", postings=240),
-    JobTrendPoint(month="May", postings=230),
-    JobTrendPoint(month="Jun", postings=260),
-]
-
-MOCK_SKILL_DEMAND: list[JobSkillDemand] = [
-    JobSkillDemand(skill="Python", count=48),
-    JobSkillDemand(skill="SQL", count=55),
-    JobSkillDemand(skill="AWS", count=37),
-    JobSkillDemand(skill="Excel", count=62),
-    JobSkillDemand(skill="Project Management", count=41),
-]
+router = APIRouter()
 
 
-def _compute_summary() -> JobSummary:
-    total_jobs = len(MOCK_JOB_LISTINGS)
-    cutoff = date.today().toordinal() - 30
-    jobs_this_month = sum(1 for job in MOCK_JOB_LISTINGS if job.posting_date.toordinal() >= cutoff)
-    industry_counts: dict[str, int] = {}
-    for job in MOCK_JOB_LISTINGS:
-        industry_counts[job.industry] = industry_counts.get(job.industry, 0) + 1
-    top_industry = max(industry_counts, key=industry_counts.get) if industry_counts else "N/A"
-    top_skill = max(MOCK_SKILL_DEMAND, key=lambda s: s.count).skill if MOCK_SKILL_DEMAND else "N/A"
+@router.get("/jobs/summary", response_model=JobSummary)
+def job_summary() -> JobSummary:
+    """
+    High-level job postings and workforce summary for Montgomery.
+    Backed by the SQLite jobs table via database.get_job_stats().
+    """
+
+    stats = get_job_stats()
     return JobSummary(
-        total_jobs=total_jobs,
-        jobs_this_month=jobs_this_month,
-        top_industry=top_industry,
-        top_skill=top_skill,
+        total_jobs=stats["total_jobs"],
+        jobs_this_month=stats["new_this_week"],
+        top_industry=stats["top_sector"] or "N/A",
+        top_skill="N/A",
     )
 
 
-@router.get("/summary", response_model=JobSummary)
-def job_summary() -> JobSummary:
-    """High-level job postings and workforce summary for Montgomery."""
-    return _compute_summary()
-
-
-@router.get("/trends", response_model=List[JobTrendPoint])
+@router.get("/jobs/trends", response_model=List[JobTrendPoint])
 def job_trends() -> List[JobTrendPoint]:
-    """Job postings over time (mock monthly trend)."""
-    return MOCK_JOB_TRENDS
+    """
+    Simple trend line: count of job postings grouped by posted month (YYYY-MM).
+    """
+
+    conn = get_db()
+    rows = conn.execute(
+        """
+        SELECT substr(posted_date, 1, 7) AS month, COUNT(*) AS postings
+        FROM jobs
+        WHERE posted_date IS NOT NULL AND posted_date != ''
+        GROUP BY month
+        ORDER BY month
+        """
+    ).fetchall()
+    conn.close()
+
+    return [JobTrendPoint(month=row["month"], postings=row["postings"]) for row in rows]
 
 
-@router.get("/skills", response_model=List[JobSkillDemand])
+@router.get("/jobs/skills", response_model=List[JobSkillDemand])
 def job_skills() -> List[JobSkillDemand]:
-    """Most in-demand skills based on recent job postings."""
-    return MOCK_SKILL_DEMAND
+    """
+    Placeholder: the current jobs schema does not store explicit skills,
+    so this returns an empty list until skills are modeled in the database.
+    """
+
+    return []
 
 
-@router.get("/listings", response_model=List[JobListing])
-def job_listings() -> List[JobListing]:
-    """Mock job listings for Montgomery, suitable for table display."""
-    return MOCK_JOB_LISTINGS
+@router.get("/jobs/listings", response_model=List[JobListing])
+def job_listings(limit: int = 100) -> List[JobListing]:
+    """
+    Latest normalized job listings, suitable for the Job Postings table.
+    """
+
+    rows = get_all_jobs(limit=limit)
+    listings: List[JobListing] = []
+
+    for r in rows:
+        min_sal = r.get("salary_min")
+        max_sal = r.get("salary_max")
+
+        if min_sal is not None and max_sal is not None:
+            salary = f"${min_sal:,.0f} - ${max_sal:,.0f}"
+        elif min_sal is not None:
+            salary = f"from ${min_sal:,.0f}"
+        elif max_sal is not None:
+            salary = f"up to ${max_sal:,.0f}"
+        else:
+            salary = "N/A"
+
+        listings.append(
+            JobListing(
+                job_title=(r.get("title") or "").strip(),
+                company=(r.get("company") or "").strip(),
+                industry=(r.get("sector") or "Other").strip(),
+                salary=salary,
+                location="Montgomery, AL",
+                posting_date=str(r.get("posted_date") or ""),
+                skills=[],
+            )
+        )
+
+    return listings
+
+
+@router.get("/jobs/debug")
+def debug_summary():
+    """
+    Raw snapshot of what's currently stored in the jobs and business_licenses tables.
+    Helpful to verify that the pipeline is ingesting data as expected.
+    """
+
+    conn = get_db()
+
+    total_jobs = conn.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
+
+    by_source = conn.execute(
+        """
+        SELECT source, COUNT(*) as count
+        FROM jobs
+        GROUP BY source
+        ORDER BY count DESC
+        """
+    ).fetchall()
+
+    by_sector = conn.execute(
+        """
+        SELECT sector, COUNT(*) as count
+        FROM jobs
+        GROUP BY sector
+        ORDER BY count DESC
+        """
+    ).fetchall()
+
+    sample = conn.execute(
+        """
+        SELECT title, company, source, sector, posted_date
+        FROM jobs
+        ORDER BY scraped_at DESC
+        LIMIT 5
+        """
+    ).fetchall()
+
+    biz_count = conn.execute(
+        "SELECT COUNT(*) FROM business_licenses"
+    ).fetchone()[0]
+
+    biz_by_category = conn.execute(
+        """
+        SELECT category, COUNT(*) as count
+        FROM business_licenses
+        GROUP BY category
+        ORDER BY count DESC
+        LIMIT 5
+        """
+    ).fetchall()
+
+    conn.close()
+
+    return {
+        "jobs": {
+            "total": total_jobs,
+            "by_source": [dict(r) for r in by_source],
+            "by_sector": [dict(r) for r in by_sector],
+            "sample": [dict(r) for r in sample],
+        },
+        "business_licenses": {
+            "total": biz_count,
+            "top_categories": [dict(r) for r in biz_by_category],
+        },
+    }

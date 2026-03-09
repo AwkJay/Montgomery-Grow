@@ -1,226 +1,214 @@
-"""
-Database and data access layer for Montgomery Grow.
+import sqlite3
+import os
+from datetime import datetime
 
-Provides the in-memory DataStore (mock/synthetic data for prototype) and
-geospatial helpers. Can be extended for a real DB (e.g. PostgreSQL) later.
-"""
+DB_PATH = os.path.join(os.path.dirname(__file__), "workforce.db")
 
-from __future__ import annotations
+def get_db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row   # lets you access columns by name
+    return conn
 
-import math
-from dataclasses import dataclass
-from datetime import datetime, timedelta
-from typing import Optional
+def create_tables():
+    conn = get_db()
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS jobs (
+            id           TEXT PRIMARY KEY,
+            title        TEXT,
+            company      TEXT,
+            sector       TEXT,
+            salary_min   REAL,
+            salary_max   REAL,
+            posted_date  TEXT,
+            source       TEXT,
+            link         TEXT,
+            scraped_at   TEXT
+        );
 
-import numpy as np
-import pandas as pd
+        CREATE TABLE IF NOT EXISTS business_licenses (
+            id           TEXT PRIMARY KEY,
+            name         TEXT,
+            category     TEXT,
+            type         TEXT,
+            year         INTEGER,
+            date         TEXT,
+            address      TEXT,
+            zip          TEXT,
+            in_city      INTEGER
+        );
 
+        CREATE TABLE IF NOT EXISTS construction_permits (
+            id           TEXT PRIMARY KEY,
+            permit_type  TEXT,
+            permit_value REAL,
+            issue_date   TEXT,
+            address      TEXT,
+            lat          REAL,
+            lng          REAL
+        );
 
-@dataclass
-class DataStore:
-    """In-memory container for economic datasets used by the API."""
+        CREATE TABLE IF NOT EXISTS code_violations (
+            id           TEXT PRIMARY KEY,
+            type         TEXT,
+            address      TEXT,
+            date         TEXT,
+            district     TEXT,
+            lat          REAL,
+            lng          REAL
+        );
 
-    business_licenses: pd.DataFrame
-    construction_permits: pd.DataFrame
-    foot_traffic: pd.DataFrame
-    complaints: pd.DataFrame
-    population_trends: pd.DataFrame
-    visitor_origins: pd.DataFrame
-    top_locations: pd.DataFrame
+        CREATE TABLE IF NOT EXISTS service_requests_311 (
+            id           TEXT PRIMARY KEY,
+            request_type TEXT,
+            department   TEXT,
+            neighborhood TEXT,
+            status       TEXT,
+            date         TEXT,
+            lat          REAL,
+            lng          REAL
+        );
 
+        CREATE TABLE IF NOT EXISTS score_history (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            score        REAL,
+            job_velocity REAL,
+            biz_growth   REAL,
+            construction REAL,
+            risk         REAL,
+            computed_at  TEXT
+        );
+    """)
+    conn.commit()
+    conn.close()
 
-_DATA_STORE: Optional[DataStore] = None
+# ── UPSERT FUNCTIONS ──────────────────────────────────────────
+# "Upsert" = insert if new, replace if already exists
+# This means running the scraper twice never creates duplicates
 
+def upsert_jobs(jobs: list[dict]):
+    conn = get_db()
+    conn.executemany("""
+        INSERT OR REPLACE INTO jobs
+        VALUES (:id,:title,:company,:sector,:salary_min,:salary_max,
+                :posted_date,:source,:link,:scraped_at)
+    """, jobs)
+    conn.commit()
+    conn.close()
+    print(f"[DB] Saved {len(jobs)} jobs")
 
-def _random_coord(base_lat: float, base_lon: float, max_delta_km: float = 6.0) -> tuple[float, float]:
-    """Generate a random coordinate within ~max_delta_km of a base point."""
+def upsert_business_licenses(records: list[dict]):
+    conn = get_db()
+    conn.executemany("""
+        INSERT OR REPLACE INTO business_licenses
+        VALUES (:id,:name,:category,:type,:year,:date,:address,:zip,:in_city)
+    """, records)
+    conn.commit()
+    conn.close()
+    print(f"[DB] Saved {len(records)} business licenses")
 
-    max_delta_deg_lat = max_delta_km / 111.0
-    max_delta_deg_lon = max_delta_km / 92.0
-    dlat = np.random.uniform(-max_delta_deg_lat, max_delta_deg_lat)
-    dlon = np.random.uniform(-max_delta_deg_lon, max_delta_deg_lon)
-    return base_lat + dlat, base_lon + dlon
+def upsert_construction_permits(records: list[dict]):
+    conn = get_db()
+    conn.executemany("""
+        INSERT OR REPLACE INTO construction_permits
+        VALUES (:id,:permit_type,:permit_value,:issue_date,:address,:lat,:lng)
+    """, records)
+    conn.commit()
+    conn.close()
 
+def upsert_code_violations(records: list[dict]):
+    conn = get_db()
+    conn.executemany("""
+        INSERT OR REPLACE INTO code_violations
+        VALUES (:id,:type,:address,:date,:district,:lat,:lng)
+    """, records)
+    conn.commit()
+    conn.close()
 
-def _generate_mock_data(seed: int = 42) -> DataStore:
-    """Generate synthetic-but-plausible datasets for Montgomery."""
+def upsert_311(records: list[dict]):
+    conn = get_db()
+    conn.executemany("""
+        INSERT OR REPLACE INTO service_requests_311
+        VALUES (:id,:request_type,:department,:neighborhood,:status,:date,:lat,:lng)
+    """, records)
+    conn.commit()
+    conn.close()
 
-    np.random.seed(seed)
+def save_score(score: dict):
+    conn = get_db()
+    conn.execute("""
+        INSERT INTO score_history
+        (score, job_velocity, biz_growth, construction, risk, computed_at)
+        VALUES (?,?,?,?,?,?)
+    """, [
+        score["score"],
+        score["components"]["job_velocity"],
+        score["components"]["biz_growth"],
+        score["components"]["construction"],
+        score["components"]["risk"],
+        datetime.utcnow().isoformat()
+    ])
+    conn.commit()
+    conn.close()
 
-    base_lat, base_lon = 32.3668, -86.3000
-    today = datetime.utcnow().date()
+# ── READ FUNCTIONS (used by your API routes) ──────────────────
 
-    years = np.arange(today.year - 4, today.year + 1)
-    categories = ["Restaurant", "Retail", "Services", "Tech", "Industrial"]
+def get_all_jobs(limit=100):
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT * FROM jobs ORDER BY scraped_at DESC LIMIT ?", [limit]
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
-    business_rows = []
-    biz_id = 1
-    for year in years:
-        for _ in range(np.random.randint(80, 160)):
-            lat, lon = _random_coord(base_lat, base_lon)
-            business_rows.append(
-                {
-                    "id": biz_id,
-                    "name": f"Business {biz_id}",
-                    "category": np.random.choice(categories, p=[0.25, 0.25, 0.2, 0.15, 0.15]),
-                    "opened_date": datetime(year, np.random.randint(1, 13), np.random.randint(1, 28)).date(),
-                    "lat": lat,
-                    "lon": lon,
-                    "active": np.random.rand() > 0.1,
-                }
-            )
-            biz_id += 1
+def get_jobs_by_sector():
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT sector, COUNT(*) as count 
+        FROM jobs 
+        GROUP BY sector 
+        ORDER BY count DESC
+    """).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
-    business_licenses = pd.DataFrame(business_rows)
+def get_job_stats():
+    conn = get_db()
+    total = conn.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
+    new_week = conn.execute("""
+        SELECT COUNT(*) FROM jobs 
+        WHERE scraped_at >= datetime('now', '-7 days')
+    """).fetchone()[0]
+    top_sector = conn.execute("""
+        SELECT sector, COUNT(*) as c FROM jobs 
+        GROUP BY sector ORDER BY c DESC LIMIT 1
+    """).fetchone()
+    last_updated = conn.execute(
+        "SELECT MAX(scraped_at) FROM jobs"
+    ).fetchone()[0]
+    conn.close()
+    return {
+        "total_jobs": total,
+        "new_this_week": new_week,
+        "top_sector": top_sector[0] if top_sector else None,
+        "last_updated": last_updated
+    }
 
-    permit_rows = []
-    permit_id = 1
-    for year in years:
-        for _ in range(np.random.randint(40, 90)):
-            lat, lon = _random_coord(base_lat, base_lon)
-            permit_rows.append(
-                {
-                    "id": permit_id,
-                    "permit_type": np.random.choice(["Residential", "Commercial", "Mixed-use"]),
-                    "issued_date": datetime(year, np.random.randint(1, 13), np.random.randint(1, 28)).date(),
-                    "value": float(np.random.lognormal(mean=11, sigma=0.5)),
-                    "lat": lat,
-                    "lon": lon,
-                }
-            )
-            permit_id += 1
+def get_business_growth():
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT year, category, COUNT(*) as count
+        FROM business_licenses
+        WHERE in_city = 1
+        GROUP BY year, category
+        ORDER BY year DESC
+    """).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
-    construction_permits = pd.DataFrame(permit_rows)
-
-    traffic_rows = []
-    traffic_id = 1
-    for days_ago in range(0, 90):
-        date = today - timedelta(days=days_ago)
-        for _ in range(np.random.randint(25, 60)):
-            lat, lon = _random_coord(base_lat, base_lon)
-            traffic_rows.append(
-                {
-                    "id": traffic_id,
-                    "date": date,
-                    "lat": lat,
-                    "lon": lon,
-                    "visitors": int(np.random.randint(20, 300)),
-                }
-            )
-            traffic_id += 1
-
-    foot_traffic = pd.DataFrame(traffic_rows)
-
-    complaint_types = ["Code violation", "Noise", "Trash", "Parking", "Other"]
-    complaints_rows = []
-    comp_id = 1
-    for days_ago in range(0, 365):
-        date = today - timedelta(days=days_ago)
-        for _ in range(np.random.randint(8, 20)):
-            lat, lon = _random_coord(base_lat, base_lon)
-            complaints_rows.append(
-                {
-                    "id": comp_id,
-                    "type": np.random.choice(complaint_types, p=[0.3, 0.2, 0.25, 0.15, 0.1]),
-                    "opened_date": date,
-                    "status": np.random.choice(["Open", "In Progress", "Closed"], p=[0.2, 0.3, 0.5]),
-                    "lat": lat,
-                    "lon": lon,
-                }
-            )
-            comp_id += 1
-
-    complaints = pd.DataFrame(complaints_rows)
-
-    trend_rows = []
-    origin_rows = []
-    top_loc_rows = []
-
-    base_residents = 200_000
-    base_commuters = 40_000
-    base_visitors = 30_000
-    regions = ["Alabama (rest of state)", "Southeast US", "Midwest", "Northeast", "International"]
-    loc_categories = ["Parks", "Museums", "Downtown", "Universities", "Shopping"]
-
-    for months_ago in range(23, -1, -1):
-        month_date = (today.replace(day=1) - pd.DateOffset(months=months_ago)).date()
-        seasonal_factor = 1.0 + 0.1 * math.sin(2 * math.pi * (month_date.month / 12.0))
-
-        residents = int(base_residents * np.random.uniform(0.97, 1.03))
-        commuters = int(base_commuters * np.random.uniform(0.9, 1.1))
-        visitors = int(base_visitors * seasonal_factor * np.random.uniform(0.9, 1.1))
-
-        trend_rows.append(
-            {
-                "month": month_date,
-                "residents": residents,
-                "commuters": commuters,
-                "visitors": visitors,
-            }
-        )
-
-        weights = np.random.dirichlet(np.ones(len(regions)))
-        for region, w in zip(regions, weights):
-            origin_rows.append(
-                {
-                    "month": month_date,
-                    "region": region,
-                    "visitors": int(visitors * float(w)),
-                }
-            )
-
-        loc_weights = np.random.dirichlet(np.ones(len(loc_categories)))
-        for cat, w in zip(loc_categories, loc_weights):
-            top_loc_rows.append(
-                {
-                    "month": month_date,
-                    "category": cat,
-                    "visits": int(visitors * float(w)),
-                }
-            )
-
-    population_trends = pd.DataFrame(trend_rows)
-    visitor_origins = pd.DataFrame(origin_rows)
-    top_locations = pd.DataFrame(top_loc_rows)
-
-    return DataStore(
-        business_licenses=business_licenses,
-        construction_permits=construction_permits,
-        foot_traffic=foot_traffic,
-        complaints=complaints,
-        population_trends=population_trends,
-        visitor_origins=visitor_origins,
-        top_locations=top_locations,
-    )
-
-
-def get_data_store() -> DataStore:
-    """Return a singleton DataStore, generating mock data on first access."""
-
-    global _DATA_STORE
-    if _DATA_STORE is None:
-        _DATA_STORE = _generate_mock_data()
-    return _DATA_STORE
-
-
-def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Compute great-circle distance between two lat/lon points in kilometers."""
-
-    r = 6371.0
-    phi1, phi2 = math.radians(lat1), math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlambda = math.radians(lon2 - lon1)
-
-    a = math.sin(dphi / 2.0) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2.0) ** 2
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-    return r * c
-
-
-def filter_within_radius(df: pd.DataFrame, lat: float, lon: float, radius_km: float) -> pd.DataFrame:
-    """Return subset of df where points are within radius_km of the given location."""
-
-    if df.empty:
-        return df
-
-    distances = df[["lat", "lon"]].apply(lambda row: haversine_km(lat, lon, row["lat"], row["lon"]), axis=1)
-    return df[distances <= radius_km].copy()
+def get_latest_score():
+    conn = get_db()
+    row = conn.execute(
+        "SELECT * FROM score_history ORDER BY computed_at DESC LIMIT 1"
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None

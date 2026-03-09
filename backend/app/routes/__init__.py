@@ -1,6 +1,8 @@
-from .jobs import router as jobs_router
-from .business import router as business_router
-from .population import router as population_router
-from .scoring import router as scoring_router
+"""
+FastAPI route modules for the Montgomery Grow backend.
 
-__all__ = ["jobs_router", "business_router", "population_router", "scoring_router"]
+Imported explicitly in main.py, e.g.:
+    from app.routes import jobs, business
+"""
+
+__all__ = ["jobs", "business"]
