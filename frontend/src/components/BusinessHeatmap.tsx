@@ -4,7 +4,7 @@ import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import 'leaflet.heat';
 
-const API_BASE = 'http://localhost:8000';
+const API_BASE = import.meta.env.VITE_API_URL
 const MONTGOMERY_CENTER: [number, number] = [32.3668, -86.3];
 
 type HeatmapPoint = {
