@@ -14,7 +14,8 @@ from database import (
     upsert_business_licenses,
     upsert_311,
     upsert_construction_permits,
-    upsert_code_violations
+    upsert_code_violations,
+    get_latest_permit_date
 )
 scheduler = BackgroundScheduler()
 
@@ -44,7 +45,8 @@ def refresh_city():
     reports = fetch_311_data()
     upsert_311(reports)
 
-    permits = fetch_construction_permits()
+    latest_permit = get_latest_permit_date()
+    permits = fetch_construction_permits(since_epoch=latest_permit)
     if permits:
         upsert_construction_permits(permits)
         print(f"[DB] Saved {len(permits)} construction permits")
