@@ -117,13 +117,28 @@ def upsert_construction_permits(records: list[dict]):
 
 def upsert_code_violations(records: list[dict]):
     conn = get_db()
+
+    cleaned = []
+    for r in records:
+        cleaned.append({
+            "id": r.get("id"),
+            "type": r.get("violation_type"),
+            "address": r.get("address"),
+            "date": r.get("open_date"),
+            "district": r.get("status"),
+            "lat": r.get("lat"),
+            "lng": r.get("lng"),
+        })
+
     conn.executemany("""
         INSERT OR REPLACE INTO code_violations
         VALUES (:id,:type,:address,:date,:district,:lat,:lng)
-    """, records)
+    """, cleaned)
+
     conn.commit()
     conn.close()
 
+    print(f"[DB] Saved {len(cleaned)} violations")
 def upsert_311(records: list[dict]):
     conn = get_db()
     conn.executemany("""
@@ -212,3 +227,4 @@ def get_latest_score():
     ).fetchone()
     conn.close()
     return dict(row) if row else None
+

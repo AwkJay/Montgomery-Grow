@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from database import create_tables
 from scheduler import start_scheduler
 from app.routes import jobs, business
+from development_api import router as development_router
 
 
 @asynccontextmanager
@@ -30,3 +31,4 @@ def health() -> dict:
 
 app.include_router(jobs.router, prefix="/api")
 app.include_router(business.router, prefix="/api")
+app.include_router(development_router)
