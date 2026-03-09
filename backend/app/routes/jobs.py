@@ -1,13 +1,28 @@
 from __future__ import annotations
 
-from typing import List
+from typing import List, Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from app.schemas import JobListing, JobSkillDemand, JobSummary, JobTrendPoint
 from database import get_all_jobs, get_db, get_job_stats, get_jobs_by_sector
 
 router = APIRouter()
+
+@router.get("/jobs/sources")
+def jobs_by_source():
+    """Counts of jobs by source (Indeed/USAJOBS/JobAps...)."""
+    conn = get_db()
+    rows = conn.execute(
+        """
+        SELECT source, COUNT(*) as count
+        FROM jobs
+        GROUP BY source
+        ORDER BY count DESC
+        """
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 @router.get("/jobs/summary", response_model=JobSummary)
@@ -92,6 +107,77 @@ def job_listings(limit: int = 100) -> List[JobListing]:
         )
 
     return listings
+
+
+@router.get("/jobs/listings-page")
+def job_listings_page(
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=10, ge=1, le=200),
+    sort_field: str = Query(default="company"),
+    sort_order: int = Query(default=1, description="1 for ASC, -1 for DESC"),
+) -> dict:
+    """
+    Server-side (lazy) pagination for PrimeReact DataTable.
+    Returns { data: JobListing[], total: number }.
+    """
+
+    allowed = {
+        "job_title": "title",
+        "company": "company",
+        "industry": "sector",
+        "salary": "salary_min",
+        "posting_date": "posted_date",
+    }
+    order_col = allowed.get(sort_field, "company")
+    order_dir = "ASC" if sort_order >= 0 else "DESC"
+
+    conn = get_db()
+    total = conn.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
+
+    rows = conn.execute(
+        f"""
+        SELECT title, company, sector, salary_min, salary_max, posted_date, source
+        FROM jobs
+        ORDER BY {order_col} {order_dir}, scraped_at DESC
+        LIMIT ? OFFSET ?
+        """,
+        [limit, offset],
+    ).fetchall()
+    conn.close()
+
+    data: list[dict] = []
+    for r in rows:
+        min_sal = r["salary_min"]
+        max_sal = r["salary_max"]
+
+        if min_sal is not None and max_sal is not None:
+            salary = f"${min_sal:,.0f} - ${max_sal:,.0f}"
+        elif min_sal is not None:
+            salary = f"from ${min_sal:,.0f}"
+        elif max_sal is not None:
+            salary = f"up to ${max_sal:,.0f}"
+        else:
+            salary = "N/A"
+
+        data.append(
+            JobListing(
+                job_title=(r["title"] or "").strip(),
+                company=(r["company"] or "").strip(),
+                industry=(r["sector"] or "Other").strip(),
+                salary=salary,
+                location="Montgomery, AL",
+                posting_date=str(r["posted_date"] or ""),
+                skills=[],
+            ).model_dump()
+        )
+
+    return {"data": data, "total": int(total)}
+
+
+@router.get("/jobs/industry-counts")
+def job_industry_counts():
+    """Counts of jobs by industry/sector for charts."""
+    return get_jobs_by_sector()
 
 
 @router.get("/jobs/debug")
