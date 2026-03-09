@@ -494,19 +494,4 @@ function IndustryChart({ industryCounts }: IndustryChartProps) {
   );
 }
 
-type InsightCardProps = {
-  title: string;
-  body: string;
-};
-
-function InsightCard({ title, body }: InsightCardProps) {
-  return (
-    <div className="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2.5">
-      <div className="text-xs font-semibold text-slate-100 mb-1.5">{title}</div>
-      <p className="text-[11px] leading-relaxed text-slate-300">{body}</p>
-    </div>
-  );
-}
-
-
 
