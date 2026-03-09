@@ -10,10 +10,7 @@ import {
   ResponsiveContainer,
   BarChart,
   Bar,
-  Cell,
 } from 'recharts';
-import { DataTable } from 'primereact/datatable';
-import { Column } from 'primereact/column';
 
 const API_BASE = 'http://localhost:8000';
 
@@ -45,11 +42,6 @@ type JobsBySourceRow = {
 
 type IndustryCountRow = {
   sector: string;
-  count: number;
-};
-
-type JobSkillDemand = {
-  skill: string;
   count: number;
 };
 
@@ -118,7 +110,6 @@ export default function JobPostingsDashboard() {
   const [industryCounts, setIndustryCounts] = useState<IndustryCountRow[]>([]);
   const [listings, setListings] = useState<JobListing[]>([]);
   const [bySource, setBySource] = useState<JobsBySourceRow[]>([]);
-  const [skills, setSkills] = useState<JobSkillDemand[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -141,15 +132,14 @@ export default function JobPostingsDashboard() {
       setLoading(true);
       setError(null);
       try {
-        const [summaryRes, trendsRes, sourcesRes, industryRes, skillsRes] = await Promise.all([
+        const [summaryRes, trendsRes, sourcesRes, industryRes] = await Promise.all([
           fetch(`${API_BASE}/api/jobs/summary`),
           fetch(`${API_BASE}/api/jobs/trends`),
           fetch(`${API_BASE}/api/jobs/sources`),
           fetch(`${API_BASE}/api/jobs/industry-counts`),
-          fetch(`${API_BASE}/api/jobs/skills`),
         ]);
 
-        if (!summaryRes.ok || !trendsRes.ok || !sourcesRes.ok || !industryRes.ok || !skillsRes.ok) {
+        if (!summaryRes.ok || !trendsRes.ok || !sourcesRes.ok || !industryRes.ok) {
           throw new Error('Failed to load job analytics');
         }
 
@@ -157,13 +147,11 @@ export default function JobPostingsDashboard() {
         const trendsJson = (await trendsRes.json()) as JobTrendPoint[];
         const sourcesJson = (await sourcesRes.json()) as JobsBySourceRow[];
         const industryJson = (await industryRes.json()) as IndustryCountRow[];
-        const skillsJson = (await skillsRes.json()) as JobSkillDemand[];
 
         setSummary(summaryJson);
         setTrends(trendsJson);
         setBySource(sourcesJson);
         setIndustryCounts(industryJson);
-        setSkills(skillsJson);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load job analytics');
       } finally {
@@ -421,9 +409,8 @@ export default function JobPostingsDashboard() {
         </div>
       </div>
 
-      {/* Top Industries & Insights */}
-      <div className="grid gap-6 lg:grid-cols-3 items-start">
-        <div className="lg:col-span-2 rounded-2xl border border-slate-800 bg-slate-900/60 p-4 shadow-xl shadow-black/60">
+      <div className="grid gap-6 lg:grid-cols-1 items-start">
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 shadow-xl shadow-black/60">
           <div className="flex items-center justify-between mb-3">
             <div>
               <h2 className="text-sm font-semibold text-slate-100">Top Industries Hiring</h2>
@@ -434,126 +421,189 @@ export default function JobPostingsDashboard() {
           </div>
           <IndustryChart industryCounts={industryCounts} />
         </div>
-
-        {/* Most In-Demand Skills */}
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 shadow-xl shadow-black/60 space-y-3">
-          <div className="flex items-center justify-between mb-2">
-            <div>
-              <h2 className="text-sm font-semibold text-slate-100">Most In-Demand Skills</h2>
-              <p className="text-xs text-slate-400">
-                Skills appearing most frequently in current job postings.
-              </p>
-            </div>
-          </div>
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={[...skills].sort((a, b) => b.count - a.count)} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                <XAxis type="number" stroke="#94a3b8" fontSize={12} />
-                <YAxis
-                  dataKey="skill"
-                  type="category"
-                  stroke="#94a3b8"
-                  fontSize={11}
-                  width={110}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#020617',
-                    border: '1px solid #1e293b',
-                    borderRadius: 8,
-                    color: '#e2e8f0',
-                  }}
-                  cursor={false}
-                  formatter={(value: number, name: string, props: any) => {
-                    const skill = props.payload.skill;
-                    const cat = SKILL_CATEGORIES[skill] || 'Other';
-                    return [value, `${skill} (${cat})`];
-                  }}
-                />
-                <Bar dataKey="count" radius={[0, 4, 4, 0]}>
-                  {[...skills].sort((a, b) => b.count - a.count).map((entry, index) => {
-                    const cat = SKILL_CATEGORIES[entry.skill] || 'Soft Skills / General';
-                    const color = CATEGORY_COLORS[cat] || '#22c55e';
-                    return <Cell key={`cell-${index}`} fill={color} />;
-                  })}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
       </div>
 
-      {/* Job Listings Table */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 shadow-xl shadow-black/60">
-        <div className="flex items-center justify-between mb-3">
+      {/* Job Listings Grid */}
+      <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 lg:p-6 shadow-xl shadow-black/60">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
           <div>
-            <h2 className="text-sm font-semibold text-slate-100">Job Listings</h2>
-            <p className="text-xs text-slate-400">
-              Sources: {bySource.map((s) => s.source).join(', ') || '—'}
+            <h2 className="text-lg font-semibold text-slate-100">Job Listings</h2>
+            <p className="text-sm text-slate-400 mt-1">
+              Currently showing {Math.min(first + 1, totalRecords)}–{Math.min(first + rows, totalRecords)} of{' '}
+              <span className="text-emerald-400 font-medium">{totalRecords.toLocaleString()}</span> active postings
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="text-[11px] text-slate-500 whitespace-nowrap">
-              Showing {Math.min(first + 1, totalRecords)}–{Math.min(first + rows, totalRecords)} of{' '}
-              {totalRecords.toLocaleString()} postings
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] text-slate-500 whitespace-nowrap">Top</span>
+          
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Sort Controls */}
+            <div className="flex items-center gap-2 bg-slate-950/50 p-1.5 rounded-lg border border-slate-800/80">
               <select
-                className="rounded-lg border border-slate-700 bg-slate-900/70 px-2 py-1 text-[11px] text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500/70"
-                value={rows}
+                className="bg-transparent text-xs text-slate-200 focus:outline-none cursor-pointer px-2"
+                value={sortField}
                 onChange={(e) => {
                   setFirst(0);
-                  setRows(parseInt(e.target.value, 10));
+                  setSortField(e.target.value as any);
                 }}
               >
-                {[10, 25, 50, 100].map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
+                <option value="posting_date">Date Posted</option>
+                <option value="salary">Salary</option>
+                <option value="company">Company</option>
+                <option value="job_title">Job Title</option>
+                <option value="industry">Industry</option>
               </select>
+              <button
+                onClick={() => {
+                  setFirst(0);
+                  setSortOrder((prev) => (prev === 1 ? -1 : 1));
+                }}
+                className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition-colors"
+                title={sortOrder === 1 ? 'Ascending' : 'Descending'}
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  {sortOrder === 1 ? (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
+                  ) : (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9m-9 4h9m5-4v12m0 0l-4-4m4 4l4-4" />
+                  )}
+                </svg>
+              </button>
             </div>
+
+            {/* Per Page */}
+            <select
+              className="rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
+              value={rows}
+              onChange={(e) => {
+                setFirst(0);
+                setRows(parseInt(e.target.value, 10));
+              }}
+            >
+              {[10, 20, 50].map((n) => (
+                <option key={n} value={n}>
+                  {n} per page
+                </option>
+              ))}
+            </select>
           </div>
         </div>
-        <div className="rounded-xl border border-slate-800/80 overflow-hidden">
-          <DataTable
-            value={listings}
-            lazy
-            loading={tableLoading}
-            totalRecords={totalRecords}
-            first={first}
-            rows={rows}
-            onPage={(e) => {
-              setFirst(e.first ?? 0);
-              setRows(e.rows ?? rows);
-            }}
-            sortField={sortField}
-            sortOrder={sortOrder}
-            onSort={(e) => {
-              setFirst(0);
-              setSortField((e.sortField as typeof sortField) ?? 'company');
-              setSortOrder((e.sortOrder as 1 | -1) ?? 1);
-            }}
-            paginator
-            paginatorTemplate="PrevPageLink PageLinks NextPageLink"
-            stripedRows
-            size="normal"
-            className="montgomery-table"
+
+        {tableLoading ? (
+          <div className="flex items-center justify-center py-20 text-slate-400">Loading listings...</div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 gap-4">
+            {listings.map((job, idx) => {
+              const bgIndex = idx % 3;
+              const bgClass =
+                bgIndex === 0
+                  ? 'from-emerald-950/20 to-transparent'
+                  : bgIndex === 1
+                  ? 'from-blue-950/20 to-transparent'
+                  : 'from-purple-950/20 to-transparent';
+
+              const skillsList = job.skills && typeof job.skills === 'string' 
+                  ? (job.skills as string).split(',').filter(s => s.trim() !== '')
+                  : Array.isArray(job.skills) ? job.skills : [];
+
+              return (
+                <div
+                  key={`${job.job_title}-${job.company}-${idx}`}
+                  className={`group relative overflow-hidden rounded-xl border border-slate-800/80 bg-slate-950/50 bg-gradient-to-br ${bgClass} p-5 transition-all hover:border-slate-600 hover:shadow-lg hover:shadow-black`}
+                >
+                  <div className="absolute top-0 right-0 p-4 opacity-10">
+                    <svg className="w-24 h-24" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M20 6h-4V4c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zM10 4h4v2h-4V4zm10 16H4V8h16v12z" />
+                    </svg>
+                  </div>
+                  
+                  <div className="relative z-10 flex flex-col h-full">
+                    <div className="flex items-start justify-between gap-4 mb-2">
+                      <h3 className="font-semibold text-slate-100 text-base leading-tight group-hover:text-emerald-400 transition-colors">
+                        {job.job_title}
+                      </h3>
+                      {job.salary && job.salary !== '0' && (
+                        <span className="inline-flex shrink-0 items-center rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-400 ring-1 ring-inset ring-emerald-500/20">
+                          {job.salary}
+                        </span>
+                      )}
+                    </div>
+                    
+                    <div className="flex items-center gap-2 text-sm text-slate-400 mb-4">
+                      <span className="font-medium text-slate-300">{job.company}</span>
+                      <span className="w-1 h-1 rounded-full bg-slate-600"></span>
+                      <span>{job.industry || 'Other'}</span>
+                    </div>
+
+                    <div className="mt-auto pt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800/60">
+                      <div className="flex flex-wrap gap-1.5">
+                        {skillsList.slice(0, 4).map((skillName: string, i: number) => {
+                          const sName = skillName.trim();
+                          const cat = SKILL_CATEGORIES[sName] || 'Soft Skills / General';
+                          const color = CATEGORY_COLORS[cat] || '#8b5cf6';
+                          
+                          return (
+                            <span 
+                              key={i} 
+                              className="inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-medium border"
+                              style={{ 
+                                color: color, 
+                                borderColor: `${color}40`, // 25% opacity
+                                backgroundColor: `${color}10` // ~6% opacity
+                              }}
+                            >
+                              {sName}
+                            </span>
+                          );
+                        })}
+                        {skillsList.length > 4 && (
+                          <span className="inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-medium border border-slate-700 bg-slate-800/50 text-slate-400">
+                            +{skillsList.length - 4} more
+                          </span>
+                        )}
+                        {skillsList.length === 0 && (
+                          <span className="text-[10px] text-slate-500 italic">No specific skills listed</span>
+                        )}
+                      </div>
+                      <div className="shrink-0 text-[11px] text-slate-500 flex items-center gap-1.5">
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        {new Date(job.posting_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Pagination */}
+        <div className="mt-6 flex items-center justify-between border-t border-slate-800/60 pt-4">
+          <button
+            onClick={() => setFirst(Math.max(0, first - rows))}
+            disabled={first === 0 || tableLoading}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900/50 px-4 py-2 text-sm font-medium text-slate-300 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            <Column
-              header="S. No."
-              body={(_, options) => <span className="text-slate-300">{first + (options.rowIndex ?? 0) + 1}</span>}
-              style={{ width: '90px' }}
-              headerStyle={{ width: '90px' }}
-            />
-            <Column field="job_title" header="Job Title" sortable style={{ minWidth: '260px' }} />
-            <Column field="company" header="Company" sortable style={{ minWidth: '220px' }} />
-            <Column field="industry" header="Industry" sortable style={{ minWidth: '180px' }} />
-            <Column field="salary" header="Salary" sortable style={{ minWidth: '180px' }} />
-            <Column field="posting_date" header="Posting Date" sortable style={{ minWidth: '160px' }} />
-          </DataTable>
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Previous
+          </button>
+          
+          <div className="text-sm text-slate-400 hidden sm:block">
+            Page {Math.floor(first / rows) + 1} of {Math.ceil(totalRecords / rows)}
+          </div>
+
+          <button
+            onClick={() => setFirst(first + rows)}
+            disabled={first + rows >= totalRecords || tableLoading}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900/50 px-4 py-2 text-sm font-medium text-slate-300 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            Next
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
         </div>
       </div>
     </div>
@@ -608,20 +658,3 @@ function IndustryChart({ industryCounts }: IndustryChartProps) {
     </div>
   );
 }
-
-type InsightCardProps = {
-  title: string;
-  body: string;
-};
-
-function InsightCard({ title, body }: InsightCardProps) {
-  return (
-    <div className="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2.5">
-      <div className="text-xs font-semibold text-slate-100 mb-1.5">{title}</div>
-      <p className="text-[11px] leading-relaxed text-slate-300">{body}</p>
-    </div>
-  );
-}
-
-
-
