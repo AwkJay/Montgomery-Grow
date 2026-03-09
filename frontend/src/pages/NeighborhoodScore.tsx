@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import "../App2.css"
+import "./App2.css"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface SearchedLocation {
