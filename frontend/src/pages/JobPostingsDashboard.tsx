@@ -14,7 +14,7 @@ import {
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
 
-const API_BASE = 'http://localhost:8000';
+const API_BASE = import.meta.env.VITE_API_URL
 
 type JobSummary = {
   total_jobs: number;
