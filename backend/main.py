@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from database import create_tables
 from scheduler import start_scheduler
-from app.routes import jobs, business
+from app.routes import jobs, business, scoring
 from development_api import router as development_router
 
 
@@ -31,4 +31,5 @@ def health() -> dict:
 
 app.include_router(jobs.router, prefix="/api")
 app.include_router(business.router, prefix="/api")
-app.include_router(development_router)
+app.include_router(scoring.router, prefix="/api")
+app.include_router(development_router, prefix="/api")
