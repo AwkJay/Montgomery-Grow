@@ -48,11 +48,12 @@ def _query(endpoint: str, where: str = "1=1", fields: str = "*", count: int = 10
     return results
 
 
-def fetch_construction_permits():
-
+def fetch_construction_permits(since_epoch: int | None = None):
+    where = f"ISSUE_DATE > {since_epoch}" if since_epoch else "1=1"
+    
     rows = _query(
         endpoint="Construction_Permits",
-        where="1=1",
+        where=where,
         fields="*"
     )
 

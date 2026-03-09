@@ -250,3 +250,10 @@ def get_latest_score():
     conn.close()
     return dict(row) if row else None
 
+def get_latest_permit_date() -> int | None:
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT MAX(CAST(issue_date AS INTEGER)) as max_d FROM construction_permits").fetchone()
+        return row["max_d"] if row and row["max_d"] else None
+    finally:
+        conn.close()
