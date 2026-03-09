@@ -137,14 +137,6 @@ export default function Navbar({
             >
               Job Postings
             </NavLink>
-            <NavLink
-              to="/advisor"
-              className={({ isActive }) =>
-                `${navLinkClasses} ${isActive ? 'bg-slate-800 text-emerald-400' : ''}`
-              }
-            >
-              AI Economic Advisor
-            </NavLink>
           </nav>
         )}
       </aside>
