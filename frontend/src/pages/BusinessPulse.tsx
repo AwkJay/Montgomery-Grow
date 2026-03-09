@@ -190,7 +190,7 @@ export default function BusinessPulse() {
                 borderRadius: '8px',
                 color: '#e2e8f0',
               }}
-              formatter={(value: number | string) => {
+              formatter={(value) => {
                 const numeric = typeof value === 'number' ? value : Number(value ?? 0);
                 const countText = numeric.toLocaleString();
                 return [countText, ''];
