@@ -10,7 +10,7 @@ Montgomery Grow is an economic intelligence dashboard for Montgomery, Alabama. I
 ### Running the Backend (FastAPI)
 
 ```bash
-cd "E:\Bhavya\Web Project\Montgomery Grow\backend"
+cd "backend"
 ..\.venv\Scripts\python -m uvicorn main:app --reload --port 8000
 ```
 
