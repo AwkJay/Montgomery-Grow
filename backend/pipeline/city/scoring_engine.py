@@ -13,62 +13,146 @@ from database import DataStore, filter_within_radius
 
 
 def _normalized_ratio(local: float, citywide: float) -> float:
-    """Map local vs citywide metric into [0, 1] where 0.5 is 'average'."""
+    """Map local vs citywide metric into [0,1] where 0.5 is average."""
 
     if citywide <= 0:
         return 0.5
 
     ratio = local / citywide
+
     if ratio <= 0:
         return 0.0
     if ratio >= 2.0:
         return 1.0
+
     return 0.25 + 0.25 * ratio
 
 
-def compute_metrics(lat: float, lon: float, radius_km: float, store: DataStore) -> Dict[str, float]:
-    """Compute normalized metrics around a point using citywide baselines."""
+def compute_metrics(lat: float, lon: float, radius_km: float, store: DataStore):
+
+    # ----------------------------
+    # BUSINESS LICENSES
+    # ----------------------------
 
     business_df = store.business_licenses
-    recent_business = business_df[business_df["opened_date"] >= business_df["opened_date"].max() - pd.Timedelta(days=365)]
+
+    recent_business = business_df[
+        business_df["date"] >= business_df["date"].max() - pd.Timedelta(days=365)
+    ]
+
     nearby_business = filter_within_radius(recent_business, lat, lon, radius_km)
+
     city_business_rate = len(recent_business) / 12.0
     local_business_rate = len(nearby_business) / 12.0
+
     new_businesses = _normalized_ratio(local_business_rate, city_business_rate)
 
+    # ----------------------------
+    # CONSTRUCTION PERMITS
+    # ----------------------------
+
     permits_df = store.construction_permits
-    recent_permits = permits_df[permits_df["issued_date"] >= permits_df["issued_date"].max() - pd.Timedelta(days=730)]
+
+    recent_permits = permits_df[
+        permits_df["issue_date"] >= permits_df["issue_date"].max()
+        - pd.Timedelta(days=730)
+    ]
+
     nearby_permits = filter_within_radius(recent_permits, lat, lon, radius_km)
-    city_permit_value = recent_permits["value"].sum() / 24.0
-    local_permit_value = nearby_permits["value"].sum() / 24.0
+
+    city_permit_value = recent_permits["permit_value"].sum() / 24.0
+    local_permit_value = nearby_permits["permit_value"].sum() / 24.0
+
     permit_value = _normalized_ratio(local_permit_value, city_permit_value)
 
-    traffic_df = store.foot_traffic
-    recent_traffic = traffic_df[traffic_df["date"] >= traffic_df["date"].max() - pd.Timedelta(days=30)]
-    nearby_traffic = filter_within_radius(recent_traffic, lat, lon, radius_km)
-    city_traffic = recent_traffic["visitors"].sum() / 30.0
-    local_traffic = nearby_traffic["visitors"].sum() / 30.0
-    foot_traffic = _normalized_ratio(local_traffic, city_traffic)
+    # ----------------------------
+    # 311 COMPLAINTS DATA
+    # ----------------------------
 
     complaints_df = store.complaints
-    recent_complaints = complaints_df[complaints_df["opened_date"] >= complaints_df["opened_date"].max() - pd.Timedelta(days=365)]
-    nearby_complaints = filter_within_radius(recent_complaints, lat, lon, radius_km)
 
-    is_code_violation = nearby_complaints["type"].eq("Code violation")
-    is_nuisance = nearby_complaints["type"].isin(["Noise", "Trash"])
-    is_open_311 = nearby_complaints["status"].isin(["Open", "In Progress"])
+    recent_complaints = complaints_df[
+        complaints_df["date"] >= complaints_df["date"].max()
+        - pd.Timedelta(days=365)
+    ]
 
-    city_code_rate = recent_complaints["type"].eq("Code violation").sum() / 12.0
-    city_nuisance_rate = recent_complaints["type"].isin(["Noise", "Trash"]).sum() / 12.0
-    city_open_311_rate = recent_complaints["status"].isin(["Open", "In Progress"]).sum() / 12.0
+    nearby_complaints = filter_within_radius(
+        recent_complaints, lat, lon, radius_km
+    )
 
-    local_code_rate = is_code_violation.sum() / 12.0
-    local_nuisance_rate = is_nuisance.sum() / 12.0
-    local_open_311_rate = is_open_311.sum() / 12.0
+    # ----------------------------
+    # CODE VIOLATIONS
+    # ----------------------------
 
-    code_violations = 1.0 - _normalized_ratio(local_code_rate, city_code_rate)
-    nuisances = 1.0 - _normalized_ratio(local_nuisance_rate, city_nuisance_rate)
-    open_311 = 1.0 - _normalized_ratio(local_open_311_rate, city_open_311_rate)
+    local_code = nearby_complaints["request_type"].str.contains(
+        "code", case=False, na=False
+    ).sum()
+
+    city_code = complaints_df["request_type"].str.contains(
+        "code", case=False, na=False
+    ).sum()
+
+    code_violations = 1.0 - _normalized_ratio(
+        local_code / 12.0,
+        city_code / 12.0
+    )
+
+    # ----------------------------
+    # NUISANCES
+    # ----------------------------
+
+    nuisance_keywords = "noise|trash|abandoned|graffiti|dumping"
+
+    local_nuisance = nearby_complaints["request_type"].str.contains(
+        nuisance_keywords, case=False, na=False
+    ).sum()
+
+    city_nuisance = complaints_df["request_type"].str.contains(
+        nuisance_keywords, case=False, na=False
+    ).sum()
+
+    nuisances = 1.0 - _normalized_ratio(
+        local_nuisance / 12.0,
+        city_nuisance / 12.0
+    )
+
+    # ----------------------------
+    # OPEN 311 REQUESTS
+    # ----------------------------
+
+    local_open = nearby_complaints["status"].str.contains(
+        "open", case=False, na=False
+    ).sum()
+
+    city_open = complaints_df["status"].str.contains(
+        "open", case=False, na=False
+    ).sum()
+
+    open_311 = 1.0 - _normalized_ratio(
+        local_open / 12.0,
+        city_open / 12.0
+    )
+
+    # ----------------------------
+    # FOOT TRAFFIC PROXY
+    # ----------------------------
+
+    local_activity = (
+        len(nearby_complaints) +
+        len(nearby_business) +
+        len(nearby_permits)
+    )
+
+    city_activity = (
+        len(complaints_df) +
+        len(business_df) +
+        len(permits_df)
+    )
+
+    foot_traffic = _normalized_ratio(
+        local_activity / 12.0,
+        city_activity / 12.0
+    )
 
     return {
         "new_businesses": float(np.clip(new_businesses, 0.0, 1.0)),
@@ -81,30 +165,31 @@ def compute_metrics(lat: float, lon: float, radius_km: float, store: DataStore) 
 
 
 def compute_score_and_grade(metrics: Dict[str, float]) -> Tuple[float, str]:
-    """Combine individual metrics into a 0–100 score and letter grade."""
+    """Combine metrics into a 0–100 opportunity score."""
 
     weights = {
-        "new_businesses": 0.22,
-        "permit_value": 0.22,
-        "foot_traffic": 0.22,
-        "code_violations": 0.12,
-        "nuisances": 0.11,
-        "open_311": 0.11,
+        "new_businesses": 0.25,
+        "permit_value": 0.25,
+        "foot_traffic": 0.20,
+        "code_violations": 0.10,
+        "nuisances": 0.10,
+        "open_311": 0.10,
     }
 
     composite = 0.0
+
     for key, weight in weights.items():
         composite += weight * metrics.get(key, 0.5)
 
     score = float(np.clip(composite * 100.0, 0.0, 100.0))
 
-    if score >= 90:
+    if score >= 85:
         grade = "A"
-    elif score >= 80:
+    elif score >= 75:
         grade = "B"
-    elif score >= 70:
+    elif score >= 65:
         grade = "C"
-    elif score >= 60:
+    elif score >= 55:
         grade = "D"
     else:
         grade = "F"
@@ -113,35 +198,56 @@ def compute_score_and_grade(metrics: Dict[str, float]) -> Tuple[float, str]:
 
 
 def build_summary(metrics: Dict[str, float], score: float, grade: str) -> str:
-    """Create a simple three-sentence narrative summary."""
+    """Create a narrative explanation of the score."""
 
-    def describe(metric_value: float, high: str, medium: str, low: str) -> str:
-        if metric_value >= 0.7:
+    def describe(value: float, high: str, medium: str, low: str):
+        if value >= 0.7:
             return high
-        if metric_value >= 0.4:
+        elif value >= 0.4:
             return medium
-        return low
+        else:
+            return low
 
     business_sentence = describe(
         metrics["new_businesses"],
-        "The area has strong recent business formation, suggesting healthy entrepreneurial activity.",
-        "Recent business formation is steady and broadly in line with the city average.",
-        "Recent business formation is relatively soft compared to the rest of the city.",
+        "The area shows strong recent business formation.",
+        "Business formation is roughly in line with the city average.",
+        "Business formation is weaker than most parts of the city.",
     )
 
     development_sentence = describe(
         metrics["permit_value"],
-        "Construction permit value is high, indicating meaningful investment and real estate activity.",
-        "Construction permits show a moderate level of new investment nearby.",
-        "Construction permit activity has been light, which may signal slower near-term development.",
+        "Construction permit values indicate strong investment activity.",
+        "Construction activity is moderate.",
+        "Construction activity has been limited recently.",
     )
+
+    activity_sentence = describe(
+        metrics["foot_traffic"],
+        "Local activity levels are high, suggesting strong demand.",
+        "Foot traffic and local activity appear average.",
+        "Activity levels appear lower than most neighborhoods.",
+    )
+
+    risk_score = (
+        metrics["code_violations"] +
+        metrics["nuisances"] +
+        metrics["open_311"]
+    ) / 3
 
     risk_sentence = describe(
-        (metrics["code_violations"] + metrics["nuisances"] + metrics["open_311"]) / 3.0,
-        "Quality-of-life indicators such as code violations and complaints are relatively favorable.",
-        "Quality-of-life indicators are mixed, with some complaints but nothing unusually elevated.",
-        "Quality-of-life indicators show elevated complaints and violations that could pose operational risks.",
+        risk_score,
+        "Quality-of-life indicators are favorable with relatively few complaints.",
+        "Complaint levels are moderate compared to the city.",
+        "Complaint levels are elevated and may pose operational risks.",
     )
 
-    headline = f"This location earns an overall economic opportunity score of {score:.0f} out of 100, corresponding to a grade of {grade}."
-    return " ".join([headline, business_sentence, development_sentence, risk_sentence])
+    headline = (
+        f"This location earns an economic opportunity score of "
+        f"{score:.0f}/100, corresponding to a grade of {grade}."
+    )
+
+    return " ".join(
+        [headline, business_sentence, development_sentence,
+         activity_sentence, risk_sentence]
+    )

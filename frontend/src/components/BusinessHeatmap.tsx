@@ -90,13 +90,14 @@ function RadiusCircle({ center, radiusKm }: RadiusCircleProps) {
 
 type RecenterOnChangeProps = {
   center: [number, number];
+  zoom: number;
 };
 
-function RecenterOnChange({ center }: RecenterOnChangeProps) {
+function RecenterOnChange({ center, zoom }: RecenterOnChangeProps) {
   const map = useMap();
   useEffect(() => {
-    map.setView(center);
-  }, [center, map]);
+    map.setView(center, zoom);
+  }, [center, zoom, map]);
   return null;
 }
 
@@ -112,6 +113,7 @@ export default function BusinessHeatmap() {
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState<'city' | 'search'>('city');
   const [mapCenter, setMapCenter] = useState<[number, number]>(MONTGOMERY_CENTER);
+  const [mapZoom, setMapZoom] = useState(12);
 
   // Load full city heatmap
   useEffect(() => {
@@ -161,6 +163,7 @@ export default function BusinessHeatmap() {
 
       setSearchCenter(coords);
       setMapCenter(coords);
+      setMapZoom(14);
 
       const params = new URLSearchParams({
         lat: String(coords[0]),
@@ -252,7 +255,9 @@ export default function BusinessHeatmap() {
               setMode('city');
               setSearchCenter(null);
               setSearchCount(null);
-              setMapCenter(MONTGOMERY_CENTER);
+              setSearchAddress('');
+              setMapCenter([...MONTGOMERY_CENTER]);
+              setMapZoom(12);
             }}
             className="inline-flex items-center rounded-lg border border-slate-700 bg-slate-900/80 px-4 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800/80"
           >
@@ -262,7 +267,16 @@ export default function BusinessHeatmap() {
 
         <button
           type="button"
-          onClick={() => setMapCenter(searchCenter || MONTGOMERY_CENTER)}
+          onClick={() => {
+            setMode('city');
+            setSearchCenter(null);
+            setSearchCount(null);
+            setSearchAddress('');
+            setSelectedCat('');
+            setRadiusKm(2);
+            setMapCenter([...MONTGOMERY_CENTER]);
+            setMapZoom(12);
+          }}
           className="inline-flex items-center rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800/80 ml-auto"
         >
           Recenter map
@@ -292,7 +306,7 @@ export default function BusinessHeatmap() {
           />
           <HeatmapLayer points={activePoints} />
           <RadiusCircle center={searchCenter} radiusKm={radiusKm} />
-          <RecenterOnChange center={mapCenter} />
+          <RecenterOnChange center={mapCenter} zoom={mapZoom} />
         </MapContainer>
       </div>
 

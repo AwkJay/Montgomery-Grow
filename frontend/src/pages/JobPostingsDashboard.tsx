@@ -10,6 +10,7 @@ import {
   ResponsiveContainer,
   BarChart,
   Bar,
+  Cell,
 } from 'recharts';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
@@ -50,6 +51,65 @@ type IndustryCountRow = {
 type JobSkillDemand = {
   skill: string;
   count: number;
+};
+
+const SKILL_CATEGORIES: Record<string, string> = {
+  Python: 'Technology',
+  R: 'Technology',
+  SQL: 'Technology',
+  JavaScript: 'Technology',
+  Cloud: 'Technology',
+  Cybersecurity: 'Technology',
+  Networking: 'Technology',
+  'Data Analysis': 'Technology',
+  Excel: 'Technology',
+
+  'Patient Care': 'Healthcare',
+  'EMR Systems': 'Healthcare',
+  ICU: 'Healthcare',
+  Phlebotomy: 'Healthcare',
+  CPR: 'Healthcare',
+  'Medical Coding': 'Healthcare',
+
+  'Law Enforcement': 'Public Safety',
+  'Emergency Mgmt': 'Public Safety',
+  Firearms: 'Public Safety',
+
+  Accounting: 'Finance',
+  Budgeting: 'Finance',
+  Auditing: 'Finance',
+  QuickBooks: 'Finance',
+
+  Welding: 'Construction & Trades',
+  Electrical: 'Construction & Trades',
+  HVAC: 'Construction & Trades',
+  Plumbing: 'Construction & Trades',
+  CDL: 'Construction & Trades',
+  'Heavy Equipment': 'Construction & Trades',
+
+  Leadership: 'Soft Skills / General',
+  Communication: 'Soft Skills / General',
+  'Customer Service': 'Soft Skills / General',
+  'Project Mgmt': 'Soft Skills / General',
+  Bilingual: 'Soft Skills / General',
+
+  Teaching: 'Education',
+  'Special Ed': 'Education',
+
+  'Security Clearance': 'Government',
+  'Grant Writing': 'Government',
+  GIS: 'Government',
+};
+
+const CATEGORY_COLORS: Record<string, string> = {
+  Technology: '#3b82f6', // blue
+  Healthcare: '#10b981', // emerald
+  'Public Safety': '#ef4444', // red
+  Finance: '#f59e0b', // amber
+  'Construction & Trades': '#f97316', // orange
+  'Soft Skills / General': '#8b5cf6', // purple
+  Education: '#ec4899', // pink
+  Government: '#64748b', // slate
 };
 
 export default function JobPostingsDashboard() {
@@ -405,8 +465,19 @@ export default function JobPostingsDashboard() {
                     color: '#e2e8f0',
                   }}
                   cursor={false}
+                  formatter={(value: number, name: string, props: any) => {
+                    const skill = props.payload.skill;
+                    const cat = SKILL_CATEGORIES[skill] || 'Other';
+                    return [value, `${skill} (${cat})`];
+                  }}
                 />
-                <Bar dataKey="count" fill="#22c55e" radius={[0, 4, 4, 0]} />
+                <Bar dataKey="count" radius={[0, 4, 4, 0]}>
+                  {[...skills].sort((a, b) => b.count - a.count).map((entry, index) => {
+                    const cat = SKILL_CATEGORIES[entry.skill] || 'Soft Skills / General';
+                    const color = CATEGORY_COLORS[cat] || '#22c55e';
+                    return <Cell key={`cell-${index}`} fill={color} />;
+                  })}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
