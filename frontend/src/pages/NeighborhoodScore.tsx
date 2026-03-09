@@ -210,11 +210,11 @@ export default function NeighborhoodScore() {
   const [isLoading, setIsLoading] = useState(false)
   const [searchedLocation, setSearchedLocation] = useState<SearchedLocation | null>(null)
   const [toast, setToast] = useState<string | null>(null)
-  const [layers, setLayers] = useState<LayerVisibility>({
-    businesses: true,
-    permits: true,
-    requests: true,
-  })
+const [layers, setLayers] = useState<LayerVisibility>({
+  businesses: true,
+  permits: true,
+  requests: true,
+})
 
   // Data counts
   const [businessCount, setBusinessCount] = useState<number | null>(null)
